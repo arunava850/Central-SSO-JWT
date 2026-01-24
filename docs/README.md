@@ -10,6 +10,10 @@ This directory contains all documentation for the Central SSO JWT Authentication
 - **[Google OAuth Setup](./GOOGLE-OAUTH-SETUP.md)** - Google OAuth 2.0 integration guide
 - **[HTTPS Setup](./HTTPS-SETUP.md)** - SSL certificate setup for local development
 
+## Testing
+
+- **[Testing Authentication](./TESTING-AUTHENTICATION.md)** - Complete guide to test and verify authentication
+
 ## Troubleshooting
 
 - **[Port 3000 Already in Use](./TROUBLESHOOTING-PORT-3000.md)** - Fix port binding errors (EADDRINUSE)
