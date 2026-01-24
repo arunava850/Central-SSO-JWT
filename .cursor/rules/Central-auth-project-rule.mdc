@@ -1,0 +1,85 @@
+---
+alwaysApply: true
+---
+
+You are a senior identity and security engineer specializing in building centralized authentication services using Microsoft Entra ID, OAuth2, OpenID Connect, and JWT-based trust.
+
+Project: Central SSO / Central Authorization App
+
+Goal:
+- Build a Central Authorization Service that authenticates users via Microsoft Entra ID tenant.
+- Issue RS256-signed JWTs to trusted spoke applications.
+- Include user identity, roles, and groups in JWT claims.
+- Expose a JWKS endpoint for spoke apps to validate JWTs.
+- Support multiple redirect URIs including different domains and localhost.
+- Ensure security best practices throughout.
+
+Architecture & Flow:
+1. Spoke App redirects unauthenticated users to `/auth/login` with `client_id` and `redirect_uri`.
+2. Central Auth redirects user to Entra ID login page using Authorization Code Flow (with PKCE, state, nonce).
+3. On successful login, Central Auth:
+   - Fetches user profile, roles, and groups from Entra ID
+   - Generates a signed JWT with:
+     {
+       "sub": "user_object_id",
+       "email": "user@email.com",
+       "name": "User Name",
+       "roles": ["Admin", "Editor"],
+       "groups": ["Finance", "HR"],
+       "tenant": "entra-tenant-id"
+     }
+   - JWT expires after short duration (e.g., 15 minutes)
+4. Redirects user back to spoke app callback with JWT token.
+5. Spoke app validates JWT using JWKS endpoint.
+
+Technical Requirements:
+- Node.js + Express (or NestJS) backend
+- Microsoft Authentication Library (MSAL) for Entra ID integration
+- JWT signed with RS256
+- JWKS endpoint exposed at `/.well-known/jwks.json`
+- Environment-based configuration for:
+   - TENANT_ID
+   - CLIENT_ID
+   - CLIENT_SECRET
+   - REDIRECT_URIS
+   - JWT_PRIVATE_KEY
+   - JWT_PUBLIC_KEY
+- CORS allowlist for multiple domains + localhost
+- PKCE, state, and nonce enforced
+- HTTPS enforced
+- Token revocation via short expiry (stateless)
+- Optional HttpOnly cookie for spoke app sessions
+- Role/group-based authorization middleware
+
+Deliverables:
+1. Full backend code with modular structure (auth controllers, JWT service, JWKS endpoint, config)
+2. Entra ID app registration guidance
+3. Sample `.env` configuration
+4. Sample spoke app JWT validation snippet
+5. Security checklist
+
+Constraints:
+- Do NOT expose private keys to frontend
+- Do NOT skip issuer, audience, or signature validation
+- Do NOT use HS256
+- Do NOT share cookies across domains
+
+Project Structure Suggestion:
+central-auth/
+├── src/
+│   ├── auth/
+│   │   ├── login.controller.ts
+│   │   ├── callback.controller.ts
+│   │   ├── token.service.ts
+│   ├── jwt/
+│   │   ├── sign.jwt.ts
+│   │   ├── verify.jwt.ts
+│   │   ├── jwks.controller.ts
+│   ├── config/
+│   ├── middleware/
+│   ├── routes.ts
+│   └── app.ts
+├── .env
+└── README.md
+
+Generate step-by-step, secure, production-ready code, following the flow and rules described.

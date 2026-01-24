@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spoke App - Login Example</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            border-radius: 5px;
+        }
+        #loginMicrosoftBtn {
+            background-color: #0078d4;
+            color: white;
+        }
+        #loginMicrosoftBtn:hover {
+            background-color: #106ebe;
+        }
+        #loginGoogleBtn {
+            background-color: #4285f4;
+            color: white;
+        }
+        #loginGoogleBtn:hover {
+            background-color: #357ae8;
+        }
+        #logoutBtn {
+            background-color: #dc3545;
+            color: white;
+        }
+        #logoutBtn:hover {
+            background-color: #c82333;
+        }
+        #status {
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        #loginButtons {
+            text-align: center;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Spoke Application</h1>
+    
+    <div id="status">
+        <p>Checking authentication status...</p>
+    </div>
+
+    <div id="loginButtons" style="display: none;">
+        <h2>Choose Login Provider</h2>
+        <button id="loginMicrosoftBtn">Login with Microsoft</button>
+        <button id="loginGoogleBtn" style="display: none;">Login with Google</button>
+        <p id="googleNote" style="display: none; color: #666; font-size: 12px;">Google OAuth is not configured</p>
+    </div>
+    <button id="logoutBtn" style="display: none;">Logout</button>
+
+    <script>
+        // Configuration - Update to match your Central Auth Service
+        const CENTRAL_AUTH_URL = 'https://localhost:3000';
+        const SPOKE_APP_CALLBACK = window.location.origin + '/auth/callback';
+
+        // Check if we have a token in the URL (from callback)
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token');
+
+        if (token) {
+            // Store token (in production, use secure storage)
+            localStorage.setItem('auth_token', token);
+            
+            // Clean URL
+            window.history.replaceState({}, document.title, window.location.pathname);
+            
+            // Display user info
+            displayUserInfo(token);
+        } else {
+            // Check for existing token
+            const storedToken = localStorage.getItem('auth_token');
+            if (storedToken) {
+                displayUserInfo(storedToken);
+            } else {
+                showLoginButton();
+            }
+        }
+
+        function showLoginButton() {
+            document.getElementById('status').innerHTML = '<p>Not authenticated</p>';
+            document.getElementById('loginButtons').style.display = 'block';
+            document.getElementById('logoutBtn').style.display = 'none';
+        }
+
+        function displayUserInfo(token) {
+            try {
+                // Decode JWT (without verification - in production, verify with JWKS)
+                const base64Url = token.split('.')[1];
+                const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+                const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+                    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+                }).join(''));
+
+                const user = JSON.parse(jsonPayload);
+                
+                const provider = user.tenant === 'google' ? 'Google' : 'Microsoft';
+                
+                document.getElementById('status').innerHTML = `
+                    <h2>Authenticated</h2>
+                    <p><strong>Provider:</strong> ${provider}</p>
+                    <p><strong>Name:</strong> ${user.name}</p>
+                    <p><strong>Email:</strong> ${user.email}</p>
+                    <p><strong>Roles:</strong> ${user.roles?.join(', ') || 'None'}</p>
+                    <p><strong>Groups:</strong> ${user.groups?.join(', ') || 'None'}</p>
+                    <p><strong>Tenant:</strong> ${user.tenant}</p>
+                    <p><strong>Expires:</strong> ${new Date(user.exp * 1000).toLocaleString()}</p>
+                `;
+                
+                document.getElementById('loginButtons').style.display = 'none';
+                document.getElementById('logoutBtn').style.display = 'block';
+            } catch (error) {
+                console.error('Error decoding token:', error);
+                showLoginButton();
+            }
+        }
+
+        // Microsoft login button handler
+        document.getElementById('loginMicrosoftBtn').addEventListener('click', () => {
+            const loginUrl = `${CENTRAL_AUTH_URL}/auth/login?client_id=spoke-app&redirect_uri=${encodeURIComponent(SPOKE_APP_CALLBACK)}&provider=microsoft`;
+            window.location.href = loginUrl;
+        });
+
+        // Google login button handler
+        const googleBtn = document.getElementById('loginGoogleBtn');
+        if (googleBtn) {
+            googleBtn.addEventListener('click', () => {
+                const loginUrl = `${CENTRAL_AUTH_URL}/auth/login?client_id=spoke-app&redirect_uri=${encodeURIComponent(SPOKE_APP_CALLBACK)}&provider=google`;
+                console.log('Attempting Google login:', loginUrl);
+                window.location.href = loginUrl;
+            });
+        }
+        
+        // Note: Google button is hidden by default
+        // To enable Google OAuth, configure GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Central Auth .env
+
+        // Logout button handler
+        document.getElementById('logoutBtn').addEventListener('click', () => {
+            localStorage.removeItem('auth_token');
+            showLoginButton();
+        });
+    </script>
+</body>
+</html>
