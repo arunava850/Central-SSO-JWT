@@ -90,15 +90,21 @@ export async function callback(req: Request, res: Response): Promise<void> {
       }
 
       // Exchange authorization code for tokens
+      console.log('[CALLBACK] Exchanging Google authorization code for tokens...');
       const tokens = await googleService.getTokens(code as string);
+      console.log('[CALLBACK] Google tokens acquired successfully');
 
       // Fetch user information from Google
+      console.log('[CALLBACK] Fetching user info from Google...');
       userInfo = await googleService.getUserInfo(tokens.accessToken);
+      console.log('[CALLBACK] Google user info retrieved:', { email: userInfo.email, name: userInfo.name });
 
       // Use Google user ID as objectId, and set tenant to 'google'
       tenantId = 'google';
     } else {
       // Microsoft Entra ID flow
+      console.log('[CALLBACK] Exchanging Microsoft authorization code for tokens...');
+      console.log('[CALLBACK] Callback URL:', `${config.baseUrl}/auth/callback`);
       const tokenResult = await msalService.acquireTokenByCode(
         code as string,
         `${config.baseUrl}/auth/callback`,
@@ -106,17 +112,24 @@ export async function callback(req: Request, res: Response): Promise<void> {
       );
 
       if (!tokenResult.accessToken || !tokenResult.account) {
+        console.error('[CALLBACK] Failed to acquire token - missing accessToken or account');
         throw new Error('Failed to acquire access token');
       }
+
+      console.log('[CALLBACK] Microsoft tokens acquired successfully');
+      console.log('[CALLBACK] Account ID:', tokenResult.account.homeAccountId);
 
       // Nonce validation is handled by MSAL
 
       // Fetch user information including roles and groups
+      console.log('[CALLBACK] Fetching user info from Microsoft Graph...');
       userInfo = await msalService.getUserInfo(tokenResult.accessToken);
+      console.log('[CALLBACK] Microsoft user info retrieved:', { email: userInfo.email, name: userInfo.name, roles: userInfo.roles?.length || 0, groups: userInfo.groups?.length || 0 });
       tenantId = config.tenantId;
     }
 
     // Generate JWT with user claims (same format regardless of provider)
+    console.log('[CALLBACK] Generating JWT token...');
     const jwtToken = jwtService.sign({
       sub: userInfo.objectId,
       email: userInfo.email,
@@ -125,15 +138,29 @@ export async function callback(req: Request, res: Response): Promise<void> {
       groups: userInfo.groups,
       tenant: tenantId,
     });
+    console.log('[CALLBACK] JWT token generated successfully');
 
     // Redirect back to spoke app with JWT token
+    console.log(`[CALLBACK] Preparing redirect to spoke app: ${sessionData.redirectUri}`);
     const redirectUri = new URL(sessionData.redirectUri);
     redirectUri.searchParams.set('token', jwtToken);
     redirectUri.searchParams.set('state', state); // Echo state for spoke app validation
 
-    res.redirect(redirectUri.toString());
+    const finalRedirectUrl = redirectUri.toString();
+    console.log(`[CALLBACK] Redirecting to spoke app: ${finalRedirectUrl.substring(0, 100)}...`);
+    res.redirect(finalRedirectUrl);
   } catch (error) {
-    console.error('Callback error:', error);
-    res.status(500).json({ error: 'Authentication callback failed' });
+    console.error('[CALLBACK] Error in callback handler:', error);
+    console.error('[CALLBACK] Error details:', {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      name: error instanceof Error ? error.name : typeof error
+    });
+    
+    // Don't redirect to login - return error response instead
+    res.status(500).json({ 
+      error: 'Authentication callback failed',
+      message: error instanceof Error ? error.message : String(error)
+    });
   }
 }
