@@ -43,13 +43,28 @@ export async function login(req: Request, res: Response): Promise<void> {
     }
 
     // Verify redirect_uri is in allowed list
+    // Decode and normalize the redirect URI (remove query parameters for comparison)
     const normalizedRedirectUri = decodeURIComponent(redirect_uri);
-    if (!config.redirectUris.includes(normalizedRedirectUri)) {
+    const redirectUriBase = normalizedRedirectUri.split('?')[0]; // Remove query parameters
+    
+    // Check if base URI (without query params) matches any configured redirect URI
+    const isValidRedirectUri = config.redirectUris.some(configuredUri => {
+      const configuredBase = configuredUri.split('?')[0];
+      return redirectUriBase === configuredBase;
+    });
+    
+    if (!isValidRedirectUri) {
+      console.warn(`[LOGIN] Invalid redirect_uri: ${redirectUriBase} (from: ${normalizedRedirectUri})`);
+      console.warn(`[LOGIN] Configured redirect URIs:`, config.redirectUris);
       res.status(400).json({ 
-        error: 'Invalid redirect_uri. Must be one of the configured redirect URIs.' 
+        error: 'Invalid redirect_uri. Must be one of the configured redirect URIs.',
+        received: redirectUriBase,
+        configured: config.redirectUris
       });
       return;
     }
+    
+    console.log(`[LOGIN] Valid redirect_uri: ${redirectUriBase} (full: ${normalizedRedirectUri})`);
 
     // Generate PKCE code verifier and challenge
     const codeVerifier = base64UrlEncode(randomBytes(32));
