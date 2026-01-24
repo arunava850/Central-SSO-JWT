@@ -26,11 +26,14 @@ const client = jwksClient({
  * Get signing key from JWKS endpoint
  */
 function getKey(header, callback) {
+  console.log(`[JWKS] Fetching signing key for kid: ${header.kid}`);
   client.getSigningKey(header.kid, (err, key) => {
     if (err) {
+      console.error(`[JWKS] Failed to get signing key for kid ${header.kid}:`, err.message);
       return callback(err);
     }
     const signingKey = key.getPublicKey();
+    console.log(`[JWKS] Successfully retrieved signing key for kid: ${header.kid}`);
     callback(null, signingKey);
   });
 }
@@ -40,6 +43,10 @@ function getKey(header, callback) {
  */
 function verifyToken(token) {
   return new Promise((resolve, reject) => {
+    console.log('[JWT] Verifying token...');
+    const tokenPreview = token.substring(0, 20) + '...';
+    console.log(`[JWT] Token preview: ${tokenPreview}`);
+    
     jwt.verify(
       token,
       getKey,
@@ -50,8 +57,26 @@ function verifyToken(token) {
       },
       (err, decoded) => {
         if (err) {
+          console.error('[JWT] Token verification failed:', err.message);
+          console.error('[JWT] Error details:', {
+            name: err.name,
+            message: err.message,
+            expectedIssuer: EXPECTED_ISSUER,
+            expectedAudience: EXPECTED_AUDIENCE
+          });
           return reject(err);
         }
+        console.log('[JWT] Token verified successfully');
+        console.log('[JWT] Decoded token:', {
+          sub: decoded.sub,
+          email: decoded.email,
+          name: decoded.name,
+          roles: decoded.roles,
+          groups: decoded.groups,
+          tenant: decoded.tenant,
+          iat: new Date(decoded.iat * 1000).toISOString(),
+          exp: new Date(decoded.exp * 1000).toISOString()
+        });
         resolve(decoded);
       }
     );
@@ -62,26 +87,45 @@ function verifyToken(token) {
  * Express middleware example
  */
 function authenticateJWT(req, res, next) {
+  const timestamp = new Date().toISOString();
+  console.log(`[AUTH] ${timestamp} - ${req.method} ${req.path}`);
+  console.log(`[AUTH] IP: ${req.ip || req.connection.remoteAddress}`);
+  
   // Get token from query parameter (from redirect)
-  const token = req.query.token;
+  let token = req.query.token;
+  let tokenSource = 'query';
   
   // Or from Authorization header
-  // const authHeader = req.headers.authorization;
-  // const token = authHeader && authHeader.split(' ')[1];
+  if (!token) {
+    const authHeader = req.headers.authorization;
+    if (authHeader) {
+      token = authHeader.split(' ')[1];
+      tokenSource = 'header';
+    }
+  }
 
   if (!token) {
+    console.warn('[AUTH] No token provided');
+    console.log('[AUTH] Available sources:', {
+      queryToken: !!req.query.token,
+      hasAuthHeader: !!req.headers.authorization
+    });
     return res.status(401).json({ error: 'No token provided' });
   }
+
+  console.log(`[AUTH] Token found in ${tokenSource}`);
 
   verifyToken(token)
     .then((decoded) => {
       // Attach user info to request
       req.user = decoded;
+      console.log(`[AUTH] Authentication successful for user: ${decoded.email}`);
       next();
     })
     .catch((err) => {
-      console.error('Token verification failed:', err);
-      res.status(401).json({ error: 'Invalid or expired token' });
+      console.error('[AUTH] Token verification failed:', err.message);
+      console.error('[AUTH] Error type:', err.name);
+      res.status(401).json({ error: 'Invalid or expired token', details: err.message });
     });
 }
 

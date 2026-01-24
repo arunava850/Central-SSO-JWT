@@ -69,33 +69,59 @@
 
     <script>
         // Configuration - Update to match your Central Auth Service
-        const CENTRAL_AUTH_URL = 'https://localhost:3000';
+        const CENTRAL_AUTH_URL = 'https://auth.ainsemble.com';
         const SPOKE_APP_CALLBACK = window.location.origin + '/auth/callback';
+
+        // Logging helper
+        function log(message, data = null) {
+            const timestamp = new Date().toISOString();
+            console.log(`[SPOKE-APP] ${timestamp} - ${message}`, data || '');
+        }
+
+        log('Spoke app initialized', {
+            centralAuthUrl: CENTRAL_AUTH_URL,
+            callbackUrl: SPOKE_APP_CALLBACK,
+            currentUrl: window.location.href
+        });
 
         // Check if we have a token in the URL (from callback)
         const urlParams = new URLSearchParams(window.location.search);
         const token = urlParams.get('token');
+        const state = urlParams.get('state');
+        
+        log('URL parameters check', {
+            hasToken: !!token,
+            hasState: !!state,
+            tokenPreview: token ? token.substring(0, 20) + '...' : 'none'
+        });
 
         if (token) {
+            log('Token received from callback');
             // Store token (in production, use secure storage)
             localStorage.setItem('auth_token', token);
+            log('Token stored in localStorage');
             
             // Clean URL
             window.history.replaceState({}, document.title, window.location.pathname);
+            log('URL cleaned (removed token from address bar)');
             
             // Display user info
             displayUserInfo(token);
         } else {
+            log('No token in URL, checking localStorage');
             // Check for existing token
             const storedToken = localStorage.getItem('auth_token');
             if (storedToken) {
+                log('Found stored token in localStorage');
                 displayUserInfo(storedToken);
             } else {
+                log('No token found, showing login button');
                 showLoginButton();
             }
         }
 
         function showLoginButton() {
+            log('Showing login button');
             document.getElementById('status').innerHTML = '<p>Not authenticated</p>';
             document.getElementById('loginButtons').style.display = 'block';
             document.getElementById('logoutBtn').style.display = 'none';
@@ -103,6 +129,7 @@
 
         function displayUserInfo(token) {
             try {
+                log('Decoding JWT token');
                 // Decode JWT (without verification - in production, verify with JWKS)
                 const base64Url = token.split('.')[1];
                 const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
@@ -111,8 +138,28 @@
                 }).join(''));
 
                 const user = JSON.parse(jsonPayload);
+                log('Token decoded successfully', {
+                    email: user.email,
+                    name: user.name,
+                    tenant: user.tenant,
+                    roles: user.roles,
+                    groups: user.groups,
+                    expiresAt: new Date(user.exp * 1000).toISOString()
+                });
                 
                 const provider = user.tenant === 'google' ? 'Google' : 'Microsoft';
+                
+                // Check if token is expired
+                const now = Math.floor(Date.now() / 1000);
+                if (user.exp && user.exp < now) {
+                    log('Token expired', {
+                        expiredAt: new Date(user.exp * 1000).toISOString(),
+                        currentTime: new Date().toISOString()
+                    });
+                    localStorage.removeItem('auth_token');
+                    showLoginButton();
+                    return;
+                }
                 
                 document.getElementById('status').innerHTML = `
                     <h2>Authenticated</h2>
@@ -127,8 +174,11 @@
                 
                 document.getElementById('loginButtons').style.display = 'none';
                 document.getElementById('logoutBtn').style.display = 'block';
+                log('User info displayed successfully');
             } catch (error) {
+                log('Error decoding token', { error: error.message });
                 console.error('Error decoding token:', error);
+                localStorage.removeItem('auth_token');
                 showLoginButton();
             }
         }
@@ -136,6 +186,7 @@
         // Microsoft login button handler
         document.getElementById('loginMicrosoftBtn').addEventListener('click', () => {
             const loginUrl = `${CENTRAL_AUTH_URL}/auth/login?client_id=spoke-app&redirect_uri=${encodeURIComponent(SPOKE_APP_CALLBACK)}&provider=microsoft`;
+            log('Microsoft login initiated', { loginUrl: loginUrl });
             window.location.href = loginUrl;
         });
 
@@ -144,7 +195,7 @@
         if (googleBtn) {
             googleBtn.addEventListener('click', () => {
                 const loginUrl = `${CENTRAL_AUTH_URL}/auth/login?client_id=spoke-app&redirect_uri=${encodeURIComponent(SPOKE_APP_CALLBACK)}&provider=google`;
-                console.log('Attempting Google login:', loginUrl);
+                log('Google login initiated', { loginUrl: loginUrl });
                 window.location.href = loginUrl;
             });
         }
@@ -154,7 +205,9 @@
 
         // Logout button handler
         document.getElementById('logoutBtn').addEventListener('click', () => {
+            log('Logout initiated');
             localStorage.removeItem('auth_token');
+            log('Token removed from localStorage');
             showLoginButton();
         });
     </script>
