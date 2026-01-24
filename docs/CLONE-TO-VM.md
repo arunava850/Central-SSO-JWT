@@ -184,6 +184,33 @@ curl http://localhost:3000/health
 
 ## Troubleshooting
 
+### Port 3000 Already in Use
+
+If you get an error like:
+```
+errno: -98, syscall: 'listen', port: 3000
+```
+
+**Quick fix:**
+```bash
+# Check what's using port 3000
+sudo lsof -i :3000
+
+# Stop all PM2 processes
+pm2 delete all
+
+# Start fresh
+pm2 start dist/app.js --name central-auth
+pm2 save
+```
+
+**Or use the fix script:**
+```bash
+bash scripts/fix-port-3000.sh
+```
+
+For detailed troubleshooting, see [TROUBLESHOOTING-PORT-3000.md](./TROUBLESHOOTING-PORT-3000.md)
+
 ### Git not installed
 ```bash
 sudo apt-get update

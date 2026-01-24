@@ -8,8 +8,8 @@ module.exports = {
     {
       name: 'central-auth',
       script: './dist/app.js',
-      instances: 2, // Use cluster mode for better performance
-      exec_mode: 'cluster',
+      instances: 1, // Single instance (cluster mode can cause port binding issues)
+      exec_mode: 'fork', // Use fork mode for single instance
       env: {
         NODE_ENV: 'production',
         PORT: 3000,
@@ -24,6 +24,7 @@ module.exports = {
       restart_delay: 4000,
       watch: false,
       ignore_watch: ['node_modules', 'logs', '*.log'],
+      autorestart: true,
     },
   ],
 };

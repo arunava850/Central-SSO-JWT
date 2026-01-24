@@ -12,6 +12,7 @@ This directory contains all documentation for the Central SSO JWT Authentication
 
 ## Troubleshooting
 
+- **[Port 3000 Already in Use](./TROUBLESHOOTING-PORT-3000.md)** - Fix port binding errors (EADDRINUSE)
 - **[Entra ID URLs](./ENTRA-ID-URLS.md)** - Understanding the URLs used in Microsoft Entra ID authentication flow
 - **[Redirect URI Fix](./REDIRECT-URI-FIX.md)** - Fix for `AADSTS50011` redirect URI mismatch errors
 - **[Troubleshooting Google Error](./TROUBLESHOOTING-GOOGLE-ERROR.md)** - Comprehensive guide for Google OAuth errors
