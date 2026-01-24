@@ -4,6 +4,7 @@ This directory contains all documentation for the Central SSO JWT Authentication
 
 ## Setup & Configuration
 
+- **[Clone to VM](./CLONE-TO-VM.md)** - Step-by-step guide to clone repository to Linux VM
 - **[CIAM Configuration](./CIAM-CONFIGURATION.md)** - Configure CIAM (Customer Identity and Access Management) authority format
 - **[Entra ID Configuration](./ENTRA-ID-CONFIGURATION.md)** - Microsoft Entra ID app registration and setup
 - **[Google OAuth Setup](./GOOGLE-OAUTH-SETUP.md)** - Google OAuth 2.0 integration guide
