@@ -43,6 +43,19 @@ A production-ready Central Authorization Service that authenticates users via Mi
    - Redirects back to spoke app with JWT token
 6. Spoke app validates JWT using JWKS endpoint `/.well-known/jwks.json`
 
+## 🚀 Quick Start for Developers
+
+**Want to integrate your app with Central Auth?**
+
+👉 **[Start with the Integration Guide](./docs/INTEGRATION-GUIDE.md)** - Complete step-by-step guide  
+👉 **[Quick Start (5 minutes)](./INTEGRATION-QUICK-START.md)** - Fast integration guide
+
+**Key Information:**
+- **Central Auth URL:** `https://auth.ainsemble.com`
+- **JWKS Endpoint:** `https://auth.ainsemble.com/.well-known/jwks.json`
+- **Issuer:** `https://auth.ainsemble.com`
+- **Audience:** `spoke-applications`
+
 ## Prerequisites
 
 - Node.js 20.x LTS or higher
