@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Test Authentication Service Endpoints
+# Usage: bash scripts/test-endpoints.sh [BASE_URL]
+# Example: bash scripts/test-endpoints.sh http://localhost:3000
+
 # Test script for Central Auth Service endpoints
 # Usage: bash scripts/test-endpoints.sh
 
