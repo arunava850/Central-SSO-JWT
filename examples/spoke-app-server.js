@@ -280,6 +280,24 @@ app.get('/api/finance', authenticateJWT, requireGroup('Finance'), (req, res) => 
   });
 });
 
+// Logout endpoint
+app.get('/logout', (req, res) => {
+  console.log('[LOGOUT] Logout requested');
+  
+  // Option 1: Simple logout (just clear session)
+  // req.session.destroy();
+  // res.clearCookie('auth_token');
+  // res.redirect('/');
+  
+  // Option 2: Full logout (clear IdP session via Central Auth)
+  const postLogoutUrl = encodeURIComponent(`${req.protocol}://${req.get('host')}/`);
+  const provider = req.query.provider || 'microsoft';
+  const logoutUrl = `${CENTRAL_AUTH_URL}/auth/logout?post_logout_redirect_uri=${postLogoutUrl}&provider=${provider}`;
+  
+  console.log('[LOGOUT] Redirecting to Central Auth logout:', logoutUrl);
+  res.redirect(logoutUrl);
+});
+
 // Health check
 app.get('/health', (req, res) => {
   console.log('[HEALTH] Health check requested');

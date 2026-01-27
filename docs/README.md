@@ -31,6 +31,7 @@ This directory contains all documentation for the Central SSO JWT Authentication
 
 ## Implementation Details
 
+- **[Logout Implementation](./LOGOUT-IMPLEMENTATION.md)** - Complete guide for implementing logout functionality
 - **[Google OAuth Implementation](./GOOGLE-OAUTH-IMPLEMENTATION.md)** - Technical details of Google OAuth integration
 - **[Deployment](./DEPLOYMENT.md)** - Linux VM deployment guide
 - **[Spoke App Test Results](./SPOKE-APP-TEST-RESULTS.md)** - Test results and validation

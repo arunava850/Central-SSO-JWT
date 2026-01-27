@@ -914,6 +914,44 @@ https://my-app.com/callback?token=eyJhbGc...&state=xyz123
 
 ---
 
+## Logout Implementation
+
+### Overview
+
+Since Central Auth uses **stateless JWTs**, logout is primarily handled by removing the token on the client side. Central Auth provides logout endpoints to optionally clear the IdP session.
+
+### Simple Logout (Client-Side Only)
+
+```javascript
+function logout() {
+  // Remove token
+  localStorage.removeItem('auth_token');
+  // Redirect to login
+  window.location.href = '/login';
+}
+```
+
+### Full Logout (with IdP Session Clearing)
+
+```javascript
+function logout() {
+  // Remove token
+  localStorage.removeItem('auth_token');
+  
+  // Redirect to Central Auth logout
+  const postLogoutUrl = encodeURIComponent(window.location.origin + '/login');
+  window.location.href = `https://auth.ainsemble.com/auth/logout?` +
+    `post_logout_redirect_uri=${postLogoutUrl}&` +
+    `provider=microsoft`;
+}
+```
+
+**Logout Endpoints:**
+- **Full logout:** `GET /auth/logout?post_logout_redirect_uri=xxx&provider=microsoft`
+- **Simple logout:** `GET /auth/logout/simple?post_logout_redirect_uri=xxx`
+
+For detailed logout implementation, see [Logout Implementation Guide](./LOGOUT-IMPLEMENTATION.md).
+
 ## Support
 
 For integration help:
