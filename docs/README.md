@@ -2,6 +2,10 @@
 
 This directory contains all documentation for the Central SSO JWT Authentication Service.
 
+## Integration
+
+- **[Integration Guide](./INTEGRATION-GUIDE.md)** - **START HERE** - Complete guide for developers to integrate applications with Central Auth
+
 ## Setup & Configuration
 
 - **[Clone to VM](./CLONE-TO-VM.md)** - Step-by-step guide to clone repository to Linux VM
