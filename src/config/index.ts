@@ -22,6 +22,8 @@ export interface Config {
   // Google OAuth (optional)
   googleClientId?: string;
   googleClientSecret?: string;
+  // Refresh token (optional, days)
+  refreshTokenExpirationDays: number;
 }
 
 function loadKey(keyPath: string | undefined, envKey: string | undefined): string {
@@ -72,6 +74,11 @@ export const config: Config = {
   // Google OAuth (optional)
   googleClientId: process.env.GOOGLE_CLIENT_ID,
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
+  // Refresh token: 1–30 days (default 7)
+  refreshTokenExpirationDays: (() => {
+    const d = parseInt(process.env.REFRESH_TOKEN_EXPIRATION_DAYS || '7', 10);
+    return Math.max(1, Math.min(30, d));
+  })(),
 };
 
 // Validate required configuration

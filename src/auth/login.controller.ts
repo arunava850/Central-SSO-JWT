@@ -96,6 +96,7 @@ export async function login(req: Request, res: Response): Promise<void> {
       nonce,
       redirectUri: normalizedRedirectUri,
       provider: authProvider as 'microsoft' | 'google',
+      clientId: client_id as string,
     });
 
     // Set state in HTTP-only cookie for additional security

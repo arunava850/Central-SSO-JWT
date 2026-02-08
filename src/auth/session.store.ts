@@ -10,6 +10,7 @@ export interface SessionData {
   nonce: string;
   redirectUri: string;
   provider: 'microsoft' | 'google';
+  clientId: string;
   createdAt: number;
 }
 

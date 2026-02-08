@@ -4,6 +4,7 @@ import { GoogleOAuthService } from './google.service';
 import { JWTService } from '../jwt/jwt.service';
 import { config } from '../config';
 import { getSession, deleteSession, getSessionCount } from './session.store';
+import { createExchangeCode, createRefreshToken } from './token.store';
 
 const msalService = new MSALService();
 
@@ -130,24 +131,37 @@ export async function callback(req: Request, res: Response): Promise<void> {
 
     // Generate JWT with user claims (same format regardless of provider)
     console.log('[CALLBACK] Generating JWT token...');
-    const jwtToken = jwtService.sign({
+    const jwtPayload = {
       sub: userInfo.objectId,
       email: userInfo.email,
       name: userInfo.name,
       roles: userInfo.roles,
       groups: userInfo.groups,
       tenant: tenantId,
-    });
+    };
+    const accessToken = jwtService.sign(jwtPayload);
+    const expiresInSeconds = config.jwtExpirationMinutes * 60;
     console.log('[CALLBACK] JWT token generated successfully');
 
-    // Redirect back to spoke app with JWT token
+    // Create refresh token for token refresh endpoint
+    const refreshToken = createRefreshToken(jwtPayload);
+
+    // Create one-time exchange code (spoke app will exchange for access_token server-side)
+    const exchangeCode = createExchangeCode(
+      accessToken,
+      sessionData.clientId,
+      expiresInSeconds,
+      refreshToken
+    );
+
+    // Redirect back to spoke app with code (not token in URL for security)
     console.log(`[CALLBACK] Preparing redirect to spoke app: ${sessionData.redirectUri}`);
     const redirectUri = new URL(sessionData.redirectUri);
-    redirectUri.searchParams.set('token', jwtToken);
+    redirectUri.searchParams.set('code', exchangeCode);
     redirectUri.searchParams.set('state', state); // Echo state for spoke app validation
 
     const finalRedirectUrl = redirectUri.toString();
-    console.log(`[CALLBACK] Redirecting to spoke app: ${finalRedirectUrl.substring(0, 100)}...`);
+    console.log(`[CALLBACK] Redirecting to spoke app with exchange code: ${finalRedirectUrl.substring(0, 100)}...`);
     res.redirect(finalRedirectUrl);
   } catch (error) {
     console.error('[CALLBACK] Error in callback handler:', error);
