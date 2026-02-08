@@ -27,8 +27,8 @@ export interface JWTPayload {
   apps: Record<string, JWTAppClaims>;
 }
 
-/** Payload input for sign() – service adds iss, aud, iat, exp */
-export type JWTPayloadInput = Omit<JWTPayload, 'iat' | 'exp' | 'iss' | 'aud'>;
+/** Payload input for sign() – service adds iss, iat, exp; aud optional (per-user from DB) */
+export type JWTPayloadInput = Omit<JWTPayload, 'iat' | 'exp' | 'iss' | 'aud'> & { aud?: string[] };
 
 export interface JWK {
   kty: string;
@@ -75,7 +75,7 @@ export class JWTService {
       iat: now,
       exp: expirationTime,
       iss: this.issuer,
-      aud: this.audience,
+      aud: payload.aud && payload.aud.length > 0 ? payload.aud : this.audience,
     };
 
     return jwt.sign(fullPayload, this.privateKey, {

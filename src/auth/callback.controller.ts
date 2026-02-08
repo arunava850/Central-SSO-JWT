@@ -6,6 +6,7 @@ import { config } from '../config';
 import { getSession, deleteSession, getSessionCount } from './session.store';
 import { createExchangeCode, createRefreshToken } from './token.store';
 import { buildUserClaims } from './claims.helper';
+import { getClaimsByEmail } from '../db/get-claims-by-email';
 
 const msalService = new MSALService();
 
@@ -130,8 +131,7 @@ export async function callback(req: Request, res: Response): Promise<void> {
       tenantId = config.tenantId;
     }
 
-    // Build platform JWT claims (identity + apps) via helper; use API claims when available
-    console.log('[CALLBACK] Building user claims and generating JWT...');
+    // Load claims from DB by email (aud, apps, personId, status); fall back to defaults if DB not configured or no rows
     const idpUser = {
       objectId: userInfo.objectId,
       email: userInfo.email,
@@ -139,7 +139,17 @@ export async function callback(req: Request, res: Response): Promise<void> {
       roles: userInfo.roles,
       groups: userInfo.groups,
     };
-    const jwtPayload = buildUserClaims(idpUser, null);
+    let apiClaims = null;
+    try {
+      apiClaims = await getClaimsByEmail(userInfo.email);
+      if (apiClaims) {
+        console.log('[CALLBACK] DB claims loaded for', userInfo.email, 'apps:', apiClaims.aud?.length ?? 0);
+      }
+    } catch (e) {
+      console.warn('[CALLBACK] getClaimsByEmail failed, using defaults:', e instanceof Error ? e.message : e);
+    }
+    console.log('[CALLBACK] Building user claims and generating JWT...');
+    const jwtPayload = buildUserClaims(idpUser, apiClaims);
     const accessToken = jwtService.sign(jwtPayload);
     const expiresInSeconds = config.jwtExpirationMinutes * 60;
     console.log('[CALLBACK] JWT token generated successfully');

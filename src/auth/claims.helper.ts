@@ -9,12 +9,14 @@ export interface IdpUserInfo {
   groups: string[];
 }
 
-/** Optional claims from your backend API (for later integration) */
+/** Optional claims from your backend API or DB */
 export interface ApiUserClaims {
   personId?: string;
   status?: string;
   personUuid?: string;
   apps?: Record<string, JWTAppClaims>;
+  /** Per-user audience (e.g. from DB app_slug); when set, used as JWT aud */
+  aud?: string[];
 }
 
 /**
@@ -27,9 +29,9 @@ export function buildUserClaims(
   _apiClaims?: ApiUserClaims | null
 ): JWTPayloadInput {
   const entraUuid = idpUser.objectId;
-  // Person_id: from API when available, otherwise use Entra UUID for now
   const personId = _apiClaims?.personId ?? entraUuid;
   const status = _apiClaims?.status ?? 'Active';
+  // Person_uuid: from DB p.person_id when apiClaims present, else default
   const personUuid = _apiClaims?.personUuid ?? '8b3d3f9d-03d4-4d0a-8e15-482b35c3850f';
 
   const identity: JWTIdentity = {
@@ -51,5 +53,6 @@ export function buildUserClaims(
     sub: personId,
     identity,
     apps,
-  };
+    ...(_apiClaims?.aud && _apiClaims.aud.length > 0 ? { aud: _apiClaims.aud } : {}),
+  } as JWTPayloadInput;
 }

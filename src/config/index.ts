@@ -26,6 +26,8 @@ export interface Config {
   googleClientSecret?: string;
   // Refresh token (optional, days)
   refreshTokenExpirationDays: number;
+  // PostgreSQL (optional – when set, JWT claims are loaded from DB by email)
+  databaseUrl?: string;
 }
 
 function loadKey(keyPath: string | undefined, envKey: string | undefined): string {
@@ -83,6 +85,7 @@ export const config: Config = {
     const d = parseInt(process.env.REFRESH_TOKEN_EXPIRATION_DAYS || '7', 10);
     return Math.max(1, Math.min(30, d));
   })(),
+  databaseUrl: process.env.DATABASE_URL,
 };
 
 // Validate required configuration
