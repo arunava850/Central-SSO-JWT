@@ -13,20 +13,20 @@ import { config } from '../config';
  */
 export async function logout(req: Request, res: Response): Promise<void> {
   try {
-    const { post_logout_redirect_uri, provider = 'microsoft' } = req.query;
+    // Accept both post_logout_redirect_uri and redirect_uri (for compatibility)
+    const { post_logout_redirect_uri, redirect_uri, provider = 'microsoft' } = req.query;
+    const redirectParam = post_logout_redirect_uri || redirect_uri;
 
     console.log(`[LOGOUT] Logout requested, provider: ${provider}`);
 
     // Default post-logout redirect
-    const defaultRedirectUri = post_logout_redirect_uri 
-      ? decodeURIComponent(post_logout_redirect_uri as string)
+    const defaultRedirectUri = redirectParam 
+      ? decodeURIComponent(redirectParam as string)
       : config.baseUrl;
 
-    // Validate post_logout_redirect_uri if provided
-    if (post_logout_redirect_uri) {
-      const normalizedUri = decodeURIComponent(post_logout_redirect_uri as string);
-      // Optionally validate against allowed list (similar to redirect_uri validation)
-      // For now, we allow any redirect for logout
+    // Validate redirect URI if provided
+    if (redirectParam) {
+      const normalizedUri = decodeURIComponent(redirectParam as string);
       console.log(`[LOGOUT] Post-logout redirect: ${normalizedUri}`);
     }
 
@@ -83,8 +83,9 @@ export async function logout(req: Request, res: Response): Promise<void> {
   } catch (error) {
     console.error('[LOGOUT] Logout error:', error);
     // On error, just redirect to base URL or provided redirect
-    const redirectUri = req.query.post_logout_redirect_uri 
-      ? decodeURIComponent(req.query.post_logout_redirect_uri as string)
+    const redirectParam = req.query.post_logout_redirect_uri || req.query.redirect_uri;
+    const redirectUri = redirectParam 
+      ? decodeURIComponent(redirectParam as string)
       : config.baseUrl;
     res.redirect(redirectUri);
   }
@@ -97,10 +98,11 @@ export async function logout(req: Request, res: Response): Promise<void> {
  * GET /auth/logout/simple?post_logout_redirect_uri=xxx
  */
 export function simpleLogout(req: Request, res: Response): void {
-  const { post_logout_redirect_uri } = req.query;
+  const { post_logout_redirect_uri, redirect_uri } = req.query;
+  const redirectParam = post_logout_redirect_uri || redirect_uri;
   
-  const redirectUri = post_logout_redirect_uri 
-    ? decodeURIComponent(post_logout_redirect_uri as string)
+  const redirectUri = redirectParam 
+    ? decodeURIComponent(redirectParam as string)
     : config.baseUrl;
   
   console.log(`[LOGOUT] Simple logout, redirecting to: ${redirectUri}`);

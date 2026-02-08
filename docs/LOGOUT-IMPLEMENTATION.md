@@ -69,12 +69,18 @@ function logout() {
 **Endpoint:** `GET /auth/logout`
 
 **Query Parameters:**
-- `post_logout_redirect_uri` (optional): Where to redirect after logout
+- `post_logout_redirect_uri` or `redirect_uri` (optional): Where to redirect after logout (both accepted)
 - `provider` (optional): `microsoft` or `google` (default: `microsoft`)
+- `client_id` (optional): Ignored; accepted for compatibility with callers that send it
 
 **Example:**
 ```
 https://auth.ainsemble.com/auth/logout?post_logout_redirect_uri=https://your-app.com/login&provider=microsoft
+```
+
+**Alternative (redirect_uri):**
+```
+https://auth.ainsemble.com/auth/logout?redirect_uri=https://your-app.com/login&provider=microsoft
 ```
 
 **Behavior:**
@@ -272,6 +278,21 @@ logout(true); // true = full logout
 ```
 
 ## Troubleshooting
+
+### Issue: 404 Not Found when calling /auth/logout
+
+**Cause:** The logout endpoint was added later; the server may be running an older build that doesn’t include it.
+
+**Fix:**
+1. On the VM, pull the latest code and rebuild:
+   ```bash
+   cd ~/central-auth
+   git pull origin main
+   npm run build
+   pm2 restart central-auth
+   ```
+2. Confirm the route exists: `GET https://auth.ainsemble.com/auth/logout` should redirect (302), not 404.
+3. You can use either `redirect_uri` or `post_logout_redirect_uri`; both are accepted.
 
 ### Issue: User can still access after logout
 
