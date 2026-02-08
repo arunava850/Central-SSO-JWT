@@ -30,7 +30,7 @@ export function buildUserClaims(
   // Person_id: from API when available, otherwise use Entra UUID for now
   const personId = _apiClaims?.personId ?? entraUuid;
   const status = _apiClaims?.status ?? 'Active';
-  const personUuid = _apiClaims?.personUuid ?? entraUuid;
+  const personUuid = _apiClaims?.personUuid ?? '8b3d3f9d-03d4-4d0a-8e15-482b35c3850f';
 
   const identity: JWTIdentity = {
     email: idpUser.email,
