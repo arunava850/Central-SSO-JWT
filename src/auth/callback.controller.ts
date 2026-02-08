@@ -141,15 +141,19 @@ export async function callback(req: Request, res: Response): Promise<void> {
     };
     let apiClaims = null;
     try {
+      console.log('[CALLBACK] Fetching DB claims for email:', userInfo.email);
       apiClaims = await getClaimsByEmail(userInfo.email);
       if (apiClaims) {
-        console.log('[CALLBACK] DB claims loaded for', userInfo.email, 'apps:', apiClaims.aud?.length ?? 0);
+        console.log('[CALLBACK] DB claims loaded for', userInfo.email, '| aud:', apiClaims.aud?.length ?? 0, 'apps, personId:', apiClaims.personId, 'personUuid:', apiClaims.personUuid);
+      } else {
+        console.log('[CALLBACK] No DB claims (null), will use default/mock claims');
       }
     } catch (e) {
       console.warn('[CALLBACK] getClaimsByEmail failed, using defaults:', e instanceof Error ? e.message : e);
     }
     console.log('[CALLBACK] Building user claims and generating JWT...');
     const jwtPayload = buildUserClaims(idpUser, apiClaims);
+    console.log('[CALLBACK] Signing JWT with payload sub:', jwtPayload.sub, 'aud:', (jwtPayload as { aud?: string[] }).aud ?? 'config default');
     const accessToken = jwtService.sign(jwtPayload);
     const expiresInSeconds = config.jwtExpirationMinutes * 60;
     console.log('[CALLBACK] JWT token generated successfully');

@@ -28,6 +28,7 @@ export function buildUserClaims(
   idpUser: IdpUserInfo,
   _apiClaims?: ApiUserClaims | null
 ): JWTPayloadInput {
+  console.log('[CLAIMS] Building JWT claims for email:', idpUser.email, _apiClaims ? '(using API/DB claims)' : '(using default/mock claims)');
   const entraUuid = idpUser.objectId;
   const personId = _apiClaims?.personId ?? entraUuid;
   const status = _apiClaims?.status ?? 'Active';
@@ -49,10 +50,19 @@ export function buildUserClaims(
       key: { uid: 'KEY_UUID_1', roles: ['ARTIST'] },
     } as Record<string, JWTAppClaims>);
 
-  return {
+  const aud = _apiClaims?.aud && _apiClaims.aud.length > 0 ? _apiClaims.aud : undefined;
+  const result = {
     sub: personId,
     identity,
     apps,
-    ...(_apiClaims?.aud && _apiClaims.aud.length > 0 ? { aud: _apiClaims.aud } : {}),
+    ...(aud ? { aud } : {}),
   } as JWTPayloadInput;
+  console.log('[CLAIMS] JWT claims set:', {
+    sub: result.sub,
+    identity: { email: result.identity.email, status: result.identity.status, entra_uuid: result.identity.entra_uuid, Person_uuid: result.identity.Person_uuid },
+    aud: aud ?? '(default from config)',
+    appSlugs: Object.keys(result.apps),
+    appsDetail: Object.fromEntries(Object.entries(result.apps).map(([k, v]) => [k, { uid: v.uid, roles: v.roles }])),
+  });
+  return result;
 }

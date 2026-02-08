@@ -27,13 +27,28 @@ WHERE p.primary_email = $1
  */
 export async function getClaimsByEmail(primaryEmail: string): Promise<ApiUserClaims | null> {
   if (!isDbConfigured()) {
+    console.log('[DB] getClaimsByEmail skipped: DATABASE_URL not set');
     return null;
   }
+  console.log('[DB] Running persona query for email:', primaryEmail, '(parameter $1)');
   try {
     const rows = await query<PersonaRow>(SQL_BY_EMAIL, [primaryEmail]);
+    console.log('[DB] Query returned', rows?.length ?? 0, 'rows');
     if (!rows || rows.length === 0) {
+      console.log('[DB] No rows for email, returning null');
       return null;
     }
+    rows.forEach((r, i) => {
+      console.log('[DB] Row', i + 1, ':', {
+        person_id: r.person_id,
+        primary_email: r.primary_email,
+        display_name: r.display_name,
+        user_status: r.user_status,
+        app_slug: r.app_slug,
+        persona_code: r.persona_code,
+        persona_name: r.persona_name,
+      });
+    });
     const first = rows[0];
     const aud = [...new Set(rows.map((r) => r.app_slug))];
     const apps: Record<string, JWTAppClaims> = {};
@@ -43,13 +58,23 @@ export async function getClaimsByEmail(primaryEmail: string): Promise<ApiUserCla
       const roles = forApp.map((r) => r.persona_name);
       apps[slug] = { uid, roles };
     }
-    return {
+    const result = {
       personId: String(first.person_id),
       status: first.user_status ?? 'Active',
       personUuid: String(first.person_id), // JWT identity.Person_uuid from p.person_id
       apps,
       aud,
     };
+    console.log('[DB] Mapped claims:', {
+      personId: result.personId,
+      status: result.status,
+      personUuid: result.personUuid,
+      aud: result.aud,
+      apps: Object.fromEntries(
+        Object.entries(result.apps).map(([k, v]) => [k, { uid: v.uid, roles: v.roles }])
+      ),
+    });
+    return result;
   } catch (err) {
     console.error('[DB] getClaimsByEmail failed:', err);
     return null;
