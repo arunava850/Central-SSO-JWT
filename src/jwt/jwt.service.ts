@@ -2,18 +2,33 @@ import jwt from 'jsonwebtoken';
 import { config } from '../config';
 import { createHash, createPublicKey } from 'crypto';
 
-export interface JWTPayload {
-  sub: string;
+/** Identity block inside the JWT */
+export interface JWTIdentity {
   email: string;
-  name: string;
-  roles: string[];
-  groups: string[];
-  tenant: string;
-  iat?: number;
-  exp?: number;
-  iss?: string;
-  aud?: string;
+  status: string;
+  entra_uuid: string;
+  Person_uuid: string;
 }
+
+/** Per-app claims */
+export interface JWTAppClaims {
+  uid: string;
+  roles: string[];
+}
+
+/** Full JWT payload (platform token shape) */
+export interface JWTPayload {
+  iss?: string;
+  sub: string;
+  aud?: string[];
+  exp?: number;
+  iat?: number;
+  identity: JWTIdentity;
+  apps: Record<string, JWTAppClaims>;
+}
+
+/** Payload input for sign() – service adds iss, aud, iat, exp */
+export type JWTPayloadInput = Omit<JWTPayload, 'iat' | 'exp' | 'iss' | 'aud'>;
 
 export interface JWK {
   kty: string;
@@ -28,12 +43,14 @@ export class JWTService {
   private readonly privateKey: string;
   private readonly publicKey: string;
   private readonly issuer: string;
+  private readonly audience: string[];
   private readonly keyId: string;
 
   constructor() {
     this.privateKey = config.jwtPrivateKey;
     this.publicKey = config.jwtPublicKey;
-    this.issuer = config.baseUrl;
+    this.issuer = config.jwtIssuer;
+    this.audience = config.jwtAudience;
     this.keyId = this.generateKeyId();
   }
 
@@ -49,7 +66,7 @@ export class JWTService {
   /**
    * Sign a JWT with RS256
    */
-  sign(payload: Omit<JWTPayload, 'iat' | 'exp' | 'iss' | 'aud'>): string {
+  sign(payload: JWTPayloadInput): string {
     const now = Math.floor(Date.now() / 1000);
     const expirationTime = now + (config.jwtExpirationMinutes * 60);
 
@@ -58,7 +75,7 @@ export class JWTService {
       iat: now,
       exp: expirationTime,
       iss: this.issuer,
-      aud: 'spoke-applications',
+      aud: this.audience,
     };
 
     return jwt.sign(fullPayload, this.privateKey, {
@@ -75,8 +92,8 @@ export class JWTService {
       const decoded = jwt.verify(token, this.publicKey, {
         algorithms: ['RS256'],
         issuer: this.issuer,
-        audience: 'spoke-applications',
-      }) as JWTPayload;
+        audience: this.audience.length > 0 ? (this.audience as [string, ...string[]]) : undefined,
+      }) as unknown as JWTPayload;
 
       return decoded;
     } catch (error) {
@@ -94,7 +111,6 @@ export class JWTService {
    * Extract public key components for JWKS
    */
   private getPublicKeyComponents(): { n: string; e: string } {
-    // Use Node.js crypto to export public key as JWK
     const keyObject = createPublicKey(this.publicKey);
     const jwk = keyObject.export({ format: 'jwk' });
 

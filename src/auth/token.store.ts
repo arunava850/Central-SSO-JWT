@@ -5,6 +5,7 @@
 
 import { randomBytes } from 'crypto';
 import { config } from '../config';
+import type { JWTPayloadInput } from '../jwt/jwt.service';
 
 /** Data stored for a one-time exchange code */
 export interface ExchangeCodeData {
@@ -15,15 +16,8 @@ export interface ExchangeCodeData {
   createdAt: number;
 }
 
-/** Payload used to re-issue JWT from refresh token */
-export interface RefreshTokenPayload {
-  sub: string;
-  email: string;
-  name: string;
-  roles: string[];
-  groups: string[];
-  tenant: string;
-}
+/** Payload used to re-issue JWT from refresh token (same shape as JWT custom claims) */
+export type RefreshTokenPayload = JWTPayloadInput;
 
 /** Stored refresh token entry */
 export interface RefreshTokenData {
@@ -89,7 +83,7 @@ export function consumeExchangeCode(
 /**
  * Create a refresh token and store payload for later JWT issuance.
  */
-export function createRefreshToken(payload: RefreshTokenPayload): string {
+export function createRefreshToken(payload: JWTPayloadInput): string {
   const token = generateOpaqueToken('rt');
   refreshStore.set(token, {
     payload,

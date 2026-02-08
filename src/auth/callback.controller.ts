@@ -5,6 +5,7 @@ import { JWTService } from '../jwt/jwt.service';
 import { config } from '../config';
 import { getSession, deleteSession, getSessionCount } from './session.store';
 import { createExchangeCode, createRefreshToken } from './token.store';
+import { buildUserClaims } from './claims.helper';
 
 const msalService = new MSALService();
 
@@ -129,16 +130,16 @@ export async function callback(req: Request, res: Response): Promise<void> {
       tenantId = config.tenantId;
     }
 
-    // Generate JWT with user claims (same format regardless of provider)
-    console.log('[CALLBACK] Generating JWT token...');
-    const jwtPayload = {
-      sub: userInfo.objectId,
+    // Build platform JWT claims (identity + apps) via helper; use API claims when available
+    console.log('[CALLBACK] Building user claims and generating JWT...');
+    const idpUser = {
+      objectId: userInfo.objectId,
       email: userInfo.email,
       name: userInfo.name,
       roles: userInfo.roles,
       groups: userInfo.groups,
-      tenant: tenantId,
     };
+    const jwtPayload = buildUserClaims(idpUser, null);
     const accessToken = jwtService.sign(jwtPayload);
     const expiresInSeconds = config.jwtExpirationMinutes * 60;
     console.log('[CALLBACK] JWT token generated successfully');

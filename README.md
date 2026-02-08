@@ -53,8 +53,10 @@ A production-ready Central Authorization Service that authenticates users via Mi
 **Key Information:**
 - **Central Auth URL:** `https://auth.ainsemble.com`
 - **JWKS Endpoint:** `https://auth.ainsemble.com/.well-known/jwks.json`
-- **Issuer:** `https://auth.ainsemble.com`
-- **Audience:** `spoke-applications`
+- **Issuer:** `ains-auth-service` (or set via `JWT_ISSUER`)
+- **Audience:** array, e.g. `["key", "pulse", "beam"]` (set via `JWT_AUDIENCE`)
+
+👉 **[Spoke app: New JWT payload & required changes](./docs/SPOKE-APP-JWT-CLAIMS.md)** – Claim structure, validation, and migration
 
 ## Prerequisites
 
@@ -196,20 +198,27 @@ ALLOWED_ORIGINS=https://spoke-app1.com,https://spoke-app2.com
 
 ## JWT Claims
 
-The issued JWT contains the following claims:
+The issued JWT uses a structured payload with `identity` and per-app `apps` claims. See **[Spoke app: JWT payload & changes](./docs/SPOKE-APP-JWT-CLAIMS.md)** for the full shape and how to validate and read claims in spoke applications.
+
+Example shape:
 
 ```json
 {
-  "sub": "user_object_id",
-  "email": "user@email.com",
-  "name": "User Name",
-  "roles": ["Admin", "Editor"],
-  "groups": ["Finance", "HR"],
-  "tenant": "entra-tenant-id",
+  "iss": "ains-auth-service",
+  "sub": "<person_id>",
+  "aud": ["key", "pulse", "beam"],
   "iat": 1234567890,
   "exp": 1234568790,
-  "iss": "https://your-domain.com",
-  "aud": "spoke-applications"
+  "identity": {
+    "email": "user@example.com",
+    "status": "Active",
+    "entra_uuid": "<Entra object ID>",
+    "Person_uuid": "<person UUID>"
+  },
+  "apps": {
+    "pulse": { "uid": "PULSE_99", "roles": ["PRODUCER"] },
+    "key": { "uid": "KEY_UUID_1", "roles": ["ARTIST"] }
+  }
 }
 ```
 

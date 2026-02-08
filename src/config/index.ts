@@ -14,6 +14,8 @@ export interface Config {
   jwtPrivateKey: string;
   jwtPublicKey: string;
   jwtExpirationMinutes: number;
+  jwtIssuer: string;
+  jwtAudience: string[];
   allowedOrigins: string[];
   baseUrl: string;
   httpsEnabled: boolean;
@@ -66,6 +68,8 @@ export const config: Config = {
   jwtPrivateKey: loadKey(process.env.JWT_PRIVATE_KEY_PATH, process.env.JWT_PRIVATE_KEY),
   jwtPublicKey: loadKey(process.env.JWT_PUBLIC_KEY_PATH, process.env.JWT_PUBLIC_KEY),
   jwtExpirationMinutes: parseInt(process.env.JWT_EXPIRATION_MINUTES || '15', 10),
+  jwtIssuer: process.env.JWT_ISSUER || 'ains-auth-service',
+  jwtAudience: (process.env.JWT_AUDIENCE || 'key,pulse,beam').split(',').map(s => s.trim()).filter(Boolean),
   allowedOrigins: parseAllowedOrigins(),
   baseUrl: process.env.BASE_URL || 'https://localhost:3000',
   httpsEnabled: process.env.HTTPS_ENABLED !== 'false',
