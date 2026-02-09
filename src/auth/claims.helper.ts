@@ -57,12 +57,13 @@ export function buildUserClaims(
     apps,
     ...(aud ? { aud } : {}),
   } as JWTPayloadInput;
-  console.log('[CLAIMS] JWT claims set:', {
+  const claimsLog = {
     sub: result.sub,
     identity: { email: result.identity.email, status: result.identity.status, entra_uuid: result.identity.entra_uuid, Person_uuid: result.identity.Person_uuid },
     aud: aud ?? '(default from config)',
     appSlugs: Object.keys(result.apps),
     appsDetail: Object.fromEntries(Object.entries(result.apps).map(([k, v]) => [k, { uid: v.uid, roles: v.roles }])),
-  });
+  };
+  console.log('[CLAIMS] JWT claims set:', JSON.stringify(claimsLog, null, 2));
   return result;
 }

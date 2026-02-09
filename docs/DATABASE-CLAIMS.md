@@ -25,9 +25,9 @@ JOIN subject.apps ap ON pa.app_slug = ap.app_id
 WHERE p.primary_email = $1
 ```
 
-- **JWT `aud`:** Distinct values of `ap.app_name` from the result rows.
-- **JWT `apps`:** One entry per distinct `app_name`:
-  - Key: `app_name` (from `subject.apps`)
+- **JWT `aud`:** Distinct values of `pa.app_slug` from the result rows.
+- **JWT `apps`:** One entry per distinct `app_slug`:
+  - Key: `pa.app_slug`
   - Value: `{ uid: persona_code (first per app), roles: [ persona_name, ... ] }`
 - **Identity:** From the first row: `sub` and `identity.Person_uuid` from `p.person_id`, `status` from `user_status`.
 
