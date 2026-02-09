@@ -26,8 +26,8 @@ WHERE p.primary_email = $1
 ```
 
 - **JWT `aud`:** Distinct values of `pa.app_slug` from the result rows.
-- **JWT `apps`:** One entry per distinct `app_slug`:
-  - Key: `pa.app_slug`
+- **JWT `apps`:** One entry per distinct `ap.app_name` (keys = app names; logged as appSlugs):
+  - Key: `ap.app_name`
   - Value: `{ uid: persona_code (first per app), roles: [ persona_name, ... ] }`
 - **Identity:** From the first row: `sub` and `identity.Person_uuid` from `p.person_id`, `status` from `user_status`.
 
