@@ -17,16 +17,17 @@ If `DATABASE_URL` is not set, the app runs without DB and uses default/mock clai
 The app runs a single parameterized query by user email:
 
 ```sql
-SELECT p.person_id, p.primary_email, p.display_name, p.user_status, pa.app_slug, pa.persona_code, per.persona_name
+SELECT p.person_id, p.primary_email, p.display_name, p.user_status, pa.app_slug, ap.app_name, pa.persona_code, per.persona_name
 FROM subject.person p
 INNER JOIN subject.persona_assignment pa ON p.person_id = pa.person_id
 JOIN subject.personas per ON pa.persona_code = per.persona_id
+JOIN subject.apps ap ON pa.app_slug = ap.app_id
 WHERE p.primary_email = $1
 ```
 
-- **JWT `aud`:** Distinct values of `pa.app_slug` from the result rows.
-- **JWT `apps`:** One entry per distinct `app_slug`:
-  - Key: `app_slug`
+- **JWT `aud`:** Distinct values of `ap.app_name` from the result rows.
+- **JWT `apps`:** One entry per distinct `app_name`:
+  - Key: `app_name` (from `subject.apps`)
   - Value: `{ uid: persona_code (first per app), roles: [ persona_name, ... ] }`
 - **Identity:** From the first row: `sub` and `identity.Person_uuid` from `p.person_id`, `status` from `user_status`.
 
