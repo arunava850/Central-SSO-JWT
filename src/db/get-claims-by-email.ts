@@ -53,15 +53,14 @@ export async function getClaimsByEmail(primaryEmail: string): Promise<ApiUserCla
       });
     });
     const first = rows[0];
-    // JWT aud = distinct pa.app_slug; apps keys = ap.app_name
+    // JWT aud and apps keys both use pa.app_slug
     const aud = [...new Set(rows.map((r) => r.app_slug))];
-    const appNames = [...new Set(rows.map((r) => r.app_name))];
     const apps: Record<string, JWTAppClaims> = {};
-    for (const appName of appNames) {
-      const forApp = rows.filter((r) => r.app_name === appName);
+    for (const slug of aud) {
+      const forApp = rows.filter((r) => r.app_slug === slug);
       const uid = forApp[0].persona_code;
       const roles = forApp.map((r) => r.persona_name);
-      apps[appName] = { uid, roles };
+      apps[slug] = { uid, roles };
     }
     const result = {
       personId: String(first.person_id),
