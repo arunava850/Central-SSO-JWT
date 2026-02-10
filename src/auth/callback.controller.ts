@@ -7,6 +7,7 @@ import { getSession, deleteSession, getSessionCount } from './session.store';
 import { createExchangeCode, createRefreshToken } from './token.store';
 import { buildUserClaims } from './claims.helper';
 import { getClaimsByEmail } from '../db/get-claims-by-email';
+import { syncPersonFromEntra } from '../db/sync-person-from-entra';
 
 const msalService = new MSALService();
 
@@ -86,6 +87,7 @@ export async function callback(req: Request, res: Response): Promise<void> {
 
     let userInfo: { objectId: string; email: string; name: string; roles: string[]; groups: string[] };
     let tenantId: string;
+    let personaCodeFromEntra: string | undefined;
 
     if (authProvider === 'google') {
       if (!googleService) {
@@ -122,6 +124,12 @@ export async function callback(req: Request, res: Response): Promise<void> {
       console.log('[CALLBACK] Microsoft tokens acquired successfully');
       console.log('[CALLBACK] Account ID:', tokenResult.account.homeAccountId);
 
+      const claims = tokenResult.idTokenClaims as Record<string, unknown> | undefined;
+      const rawRole = claims?.role ?? claims?.Role;
+      const roleStr = rawRole != null ? String(rawRole).trim() : '';
+      personaCodeFromEntra = roleStr || 'P1002';
+      console.log('[CALLBACK] Entra Role claim:', personaCodeFromEntra);
+
       // Nonce validation is handled by MSAL
 
       // Fetch user information including roles and groups
@@ -139,14 +147,21 @@ export async function callback(req: Request, res: Response): Promise<void> {
       roles: userInfo.roles,
       groups: userInfo.groups,
     };
-    let apiClaims = null;
+    let apiClaims: Awaited<ReturnType<typeof getClaimsByEmail>> = null;
     try {
       console.log('[CALLBACK] Fetching DB claims for email:', userInfo.email);
       apiClaims = await getClaimsByEmail(userInfo.email);
       if (apiClaims) {
         console.log('[CALLBACK] DB claims loaded for', userInfo.email, '| aud:', apiClaims.aud?.length ?? 0, 'apps, personId:', apiClaims.personId, 'personUuid:', apiClaims.personUuid);
       } else {
-        console.log('[CALLBACK] No DB claims (null), will use default/mock claims');
+        console.log('[CALLBACK] No DB claims (null), syncing person from Entra then re-fetching');
+        await syncPersonFromEntra(userInfo.objectId, userInfo.email, userInfo.name, personaCodeFromEntra);
+        apiClaims = await getClaimsByEmail(userInfo.email);
+        if (apiClaims) {
+          console.log('[CALLBACK] DB claims loaded after sync for', userInfo.email);
+        } else {
+          console.log('[CALLBACK] No DB claims after sync, will use default/mock claims');
+        }
       }
     } catch (e) {
       console.warn('[CALLBACK] getClaimsByEmail failed, using defaults:', e instanceof Error ? e.message : e);
