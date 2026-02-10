@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { query, isDbConfigured } from './client';
 
 /** Persona code from Entra Role claim; determines which app_slugs get assigned. */
@@ -32,13 +33,15 @@ export async function syncPersonFromEntra(
     return null;
   }
   try {
+    const personUuid = randomUUID().replace(/-/g, ''); // 32-char UUID, no hyphens
     const insertPersonSql = `
-      INSERT INTO subject.person (entra_id, primary_email, display_name, user_status, created_from_source, created_at, updated_at)
-      VALUES ($1, $2, $3, 'Active', 'platform-singup', now(), now())
+      INSERT INTO subject.person (person_uuid, entra_id, primary_email, display_name, user_status, created_from_source, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, 'Active', 'platform-singup', now(), now())
       ON CONFLICT (entra_id) DO NOTHING
       RETURNING person_id
     `;
     const insertResult = await query<{ person_id: string }>(insertPersonSql, [
+      personUuid,
       entraId,
       email,
       name ?? email,
