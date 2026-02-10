@@ -125,10 +125,10 @@ export async function callback(req: Request, res: Response): Promise<void> {
       console.log('[CALLBACK] Account ID:', tokenResult.account.homeAccountId);
 
       const claims = tokenResult.idTokenClaims as Record<string, unknown> | undefined;
-      const rawRole = claims?.role ?? claims?.Role;
-      const roleStr = rawRole != null ? String(rawRole).trim() : '';
+      const rawPersona = claims?.Persona ?? claims?.persona;
+      const roleStr = rawPersona != null ? String(rawPersona).trim() : '';
       personaCodeFromEntra = roleStr || 'P1002';
-      console.log('[CALLBACK] Entra Role claim:', personaCodeFromEntra);
+      console.log('[CALLBACK] Entra Persona claim:', personaCodeFromEntra);
 
       // Nonce validation is handled by MSAL
 
