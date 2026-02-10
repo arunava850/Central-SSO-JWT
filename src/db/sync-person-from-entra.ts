@@ -62,13 +62,25 @@ export async function syncPersonFromEntra(
       return { person_id: personId };
     }
 
+    const assignmentIds = appSlugs.map(() => randomUUID().replace(/-/g, ''));
     const insertPersonaSql = `
-      INSERT INTO subject.persona_assignment (person_id, persona_code, app_slug, created_at, created_by)
-      VALUES ${appSlugs.map((_, i) => `($1, $2, $${i + 3}, now(), 'platform-singup')`).join(', ')}
+      INSERT INTO subject.persona_assignment (assignment_id, person_id, persona_code, app_slug, created_at, created_by)
+      VALUES ${appSlugs.map((_, i) => `($${4 * i + 1}, $${4 * i + 2}, $${4 * i + 3}, $${4 * i + 4}, now(), 'platform-singup')`).join(', ')}
     `;
-    const personaParams = [personId, personaCode, ...appSlugs];
-    await query(insertPersonaSql, personaParams);
-    console.log('[DB] syncPersonFromEntra: added persona_assignment', personaCode, appSlugs, 'for person', personId);
+    const personaParams = appSlugs.flatMap((slug, i) => [assignmentIds[i], personId, personaCode, slug]);
+    try {
+      await query(insertPersonaSql, personaParams);
+      console.log('[DB] syncPersonFromEntra: added persona_assignment', personaCode, appSlugs, 'for person', personId);
+    } catch (personaErr) {
+      console.error('[DB] syncPersonFromEntra: persona_assignment insert failed', {
+        personId,
+        personaCode,
+        appSlugs,
+        error: personaErr instanceof Error ? personaErr.message : String(personaErr),
+        stack: personaErr instanceof Error ? personaErr.stack : undefined,
+      });
+      throw personaErr;
+    }
 
     return { person_id: personId };
   } catch (err) {
