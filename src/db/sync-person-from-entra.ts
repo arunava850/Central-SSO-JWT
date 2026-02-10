@@ -35,7 +35,7 @@ export async function syncPersonFromEntra(
   try {
     const personUuid = randomUUID().replace(/-/g, ''); // 32-char UUID, no hyphens
     const insertPersonSql = `
-      INSERT INTO subject.person (person_uuid, entra_id, primary_email, display_name, user_status, created_from_source, created_at, updated_at)
+      INSERT INTO subject.person (person_id, entra_id, primary_email, display_name, user_status, created_from_source, created_at, updated_at)
       VALUES ($1, $2, $3, $4, 'Active', 'platform-singup', now(), now())
       ON CONFLICT (entra_id) DO NOTHING
       RETURNING person_id
