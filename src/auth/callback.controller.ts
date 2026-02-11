@@ -132,10 +132,27 @@ export async function callback(req: Request, res: Response): Promise<void> {
 
       // Nonce validation is handled by MSAL
 
-      // Fetch user information including roles and groups
-      console.log('[CALLBACK] Fetching user info from Microsoft Graph...');
-      userInfo = await msalService.getUserInfo(tokenResult.accessToken);
-      console.log('[CALLBACK] Microsoft user info retrieved:', { email: userInfo.email, name: userInfo.name, roles: userInfo.roles?.length || 0, groups: userInfo.groups?.length || 0 });
+      // Fetch user information; Graph not required (roles/groups unused). On failure use ID token claims so first-time login still works.
+      try {
+        console.log('[CALLBACK] Fetching user info from Microsoft Graph...');
+        userInfo = await msalService.getUserInfo(tokenResult.accessToken);
+        console.log('[CALLBACK] Microsoft user info retrieved:', { email: userInfo.email, name: userInfo.name });
+      } catch (graphErr) {
+        console.warn('[CALLBACK] Graph user info failed, using ID token claims:', graphErr instanceof Error ? graphErr.message : String(graphErr));
+        const idClaims = tokenResult.idTokenClaims as Record<string, unknown> | undefined;
+        const account = tokenResult.account;
+        const objectId = (account?.localAccountId ?? idClaims?.oid ?? idClaims?.sub) as string | undefined;
+        const email = (idClaims?.email ?? idClaims?.preferred_username) as string | undefined;
+        const name = (idClaims?.name ?? idClaims?.given_name) as string | undefined;
+        userInfo = {
+          objectId: objectId ?? '',
+          email: email ?? '',
+          name: name ?? email ?? 'Unknown',
+          roles: [],
+          groups: [],
+        };
+        console.log('[CALLBACK] Using ID token claims:', { email: userInfo.email, name: userInfo.name });
+      }
       tenantId = config.tenantId;
     }
 
