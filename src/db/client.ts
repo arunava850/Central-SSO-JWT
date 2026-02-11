@@ -1,4 +1,4 @@
-import { Pool } from 'pg';
+import { Pool, PoolClient } from 'pg';
 import { config } from '../config';
 
 let pool: Pool | null = null;
@@ -26,6 +26,41 @@ export async function query<T = Record<string, unknown>>(
   } catch (err) {
     console.error('[DB] Query error:', err);
     throw err;
+  }
+}
+
+/**
+ * Get a dedicated client from the pool. Caller must call client.release() when done.
+ * Returns null if DB is not configured.
+ */
+export async function getClient(): Promise<PoolClient | null> {
+  if (!pool) return null;
+  return pool.connect();
+}
+
+/**
+ * Run multiple queries in a single transaction. BEGIN/COMMIT/ROLLBACK and client release are handled.
+ * On success returns the value from fn; on error rolls back and rethrows.
+ */
+export async function withTransaction<T>(
+  fn: (client: PoolClient) => Promise<T>
+): Promise<T> {
+  if (!pool) {
+    throw new Error('Database pool not configured');
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK').catch((rollbackErr) => {
+      console.error('[DB] Rollback error:', rollbackErr);
+    });
+    throw err;
+  } finally {
+    client.release();
   }
 }
 
