@@ -3,6 +3,7 @@ import { login } from './auth/login.controller';
 import { callback } from './auth/callback.controller';
 import { logout, simpleLogout } from './auth/logout.controller';
 import { exchangeToken, refreshToken } from './auth/token.controller';
+import { passwordToken } from './auth/password.controller';
 import { getJWKS } from './jwt/jwks.controller';
 import { authRateLimit, apiRateLimit } from './middleware/security.middleware';
 import { verifyToken } from './middleware/auth.middleware';
@@ -16,6 +17,7 @@ router.get('/auth/logout', logout);
 router.get('/auth/logout/simple', simpleLogout);
 router.post('/auth/token/exchange', apiRateLimit, exchangeToken);
 router.post('/auth/token/refresh', apiRateLimit, refreshToken);
+router.post('/auth/token/password', apiRateLimit, passwordToken);
 router.get('/.well-known/jwks.json', apiRateLimit, getJWKS);
 
 // Protected routes (example)
