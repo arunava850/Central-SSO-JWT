@@ -144,6 +144,7 @@ export async function callback(req: Request, res: Response): Promise<void> {
         const objectId = (account?.localAccountId ?? idClaims?.oid ?? idClaims?.sub) as string | undefined;
         const email = (idClaims?.email ?? idClaims?.preferred_username) as string | undefined;
         const name = (idClaims?.name ?? idClaims?.given_name) as string | undefined;
+        console.log('[CALLBACK] ID token fallback: idClaims.email=', idClaims?.email ?? '(missing)', 'preferred_username=', idClaims?.preferred_username ?? '(missing)', '-> resolved email=', (email ?? '') === '' ? '(empty)' : String(email).substring(0, 5) + '***');
         userInfo = {
           objectId: objectId ?? '',
           email: email ?? '',
@@ -172,6 +173,7 @@ export async function callback(req: Request, res: Response): Promise<void> {
         console.log('[CALLBACK] DB claims loaded for', userInfo.email, '| aud:', apiClaims.aud?.length ?? 0, 'apps, personId:', apiClaims.personId, 'personUuid:', apiClaims.personUuid);
       } else {
         console.log('[CALLBACK] No DB claims (null), syncing person from Entra then re-fetching');
+        console.log('[CALLBACK] Passing to syncPersonFromEntra: email=', userInfo.email === '' ? '(empty string)' : userInfo.email.substring(0, 5) + '***', 'name=', userInfo.name ?? '(null)', 'objectId=', userInfo.objectId);
         await syncPersonFromEntra(userInfo.objectId, userInfo.email, userInfo.name, personaCodeFromEntra);
         apiClaims = await getClaimsByEmail(userInfo.email);
         if (apiClaims) {

@@ -28,6 +28,8 @@ export interface Config {
   refreshTokenExpirationDays: number;
   // PostgreSQL (optional – when set, JWT claims are loaded from DB by email)
   databaseUrl?: string;
+  // Entra External ID sign-up: custom attribute name for Role (e.g. extension_xxx_Role)
+  entraRoleExtensionAttribute?: string;
 }
 
 function loadKey(keyPath: string | undefined, envKey: string | undefined): string {
@@ -86,6 +88,7 @@ export const config: Config = {
     return Math.max(1, Math.min(30, d));
   })(),
   databaseUrl: process.env.DATABASE_URL,
+  entraRoleExtensionAttribute: process.env.ENTRA_ROLE_EXTENSION_ATTRIBUTE,
 };
 
 // Validate required configuration

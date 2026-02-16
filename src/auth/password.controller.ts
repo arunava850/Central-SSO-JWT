@@ -183,6 +183,7 @@ function userFromIdToken(idToken: string): IdpUserInfo & { personaCodeFromEntra:
   const objectId = (decoded.oid ?? decoded.sub ?? '') as string;
   const email = (decoded.email ?? decoded.preferred_username ?? '') as string;
   const name = (decoded.name ?? decoded.given_name ?? email ?? 'Unknown') as string;
+  console.log('[PASSWORD_AUTH] userFromIdToken: id_token claims email=', decoded.email ?? '(missing)', 'preferred_username=', decoded.preferred_username ?? '(missing)', '-> resolved email=', email === '' ? '(empty)' : email.substring(0, 5) + '***', 'name=', name?.substring(0, 10) + (name?.length > 10 ? '...' : ''));
   const rawPersona = decoded.Persona ?? decoded.persona;
   const personaCodeFromEntra =
     rawPersona != null && String(rawPersona).trim() ? String(rawPersona).trim() : 'P1002';
@@ -265,6 +266,7 @@ export async function passwordToken(req: Request, res: Response): Promise<void> 
     try {
       apiClaims = await getClaimsByEmail(userInfo.email);
       if (!apiClaims) {
+        console.log('[PASSWORD_AUTH] Passing to syncPersonFromEntra: email=', userInfo.email === '' ? '(empty string)' : userInfo.email.substring(0, 5) + '***', 'name=', userInfo.name ?? '(null)', 'objectId=', userInfo.objectId);
         await syncPersonFromEntra(userInfo.objectId, userInfo.email, userInfo.name, personaCodeFromEntra);
         apiClaims = await getClaimsByEmail(userInfo.email);
       }

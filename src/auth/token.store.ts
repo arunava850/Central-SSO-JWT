@@ -27,9 +27,12 @@ export interface RefreshTokenData {
 
 const exchangeStore = new Map<string, ExchangeCodeData>();
 const refreshStore = new Map<string, RefreshTokenData>();
+const signupStore = new Map<string, { continuationToken: string; createdAt: number }>();
 
 // Exchange code: short-lived, one-time use (5 minutes)
 const EXCHANGE_CODE_TTL_MS = 5 * 60 * 1000;
+// Signup continuation token: 10 minutes TTL
+const SIGNUP_TOKEN_TTL_MS = 10 * 60 * 1000;
 function getRefreshTokenTTL(): number {
   return config.refreshTokenExpirationDays * 24 * 60 * 60 * 1000;
 }
@@ -110,12 +113,39 @@ export function consumeRefreshToken(
 }
 
 /**
- * Clean up expired exchange codes and refresh tokens.
+ * Store continuation token for sign-up flow (keyed by email).
+ * TTL: 10 minutes.
+ */
+export function storeSignupContinuationToken(email: string, continuationToken: string): void {
+  signupStore.set(email.toLowerCase().trim(), {
+    continuationToken,
+    createdAt: Date.now(),
+  });
+}
+
+/**
+ * Get and consume sign-up continuation token (one-time use).
+ * Returns null if not found or expired.
+ */
+export function getSignupContinuationToken(email: string): string | null {
+  const key = email.toLowerCase().trim();
+  const data = signupStore.get(key);
+  signupStore.delete(key); // Consume on read
+
+  if (!data) return null;
+  if (Date.now() - data.createdAt > SIGNUP_TOKEN_TTL_MS) return null;
+
+  return data.continuationToken;
+}
+
+/**
+ * Clean up expired exchange codes, refresh tokens, and signup tokens.
  */
 export function cleanupExpiredTokens(): void {
   const now = Date.now();
   let exchangeCleaned = 0;
   let refreshCleaned = 0;
+  let signupCleaned = 0;
 
   for (const [code, data] of exchangeStore.entries()) {
     if (now - data.createdAt > EXCHANGE_CODE_TTL_MS) {
@@ -132,8 +162,15 @@ export function cleanupExpiredTokens(): void {
     }
   }
 
-  if (exchangeCleaned > 0 || refreshCleaned > 0) {
-    console.log(`[TOKEN_STORE] Cleaned ${exchangeCleaned} exchange codes, ${refreshCleaned} refresh tokens`);
+  for (const [email, data] of signupStore.entries()) {
+    if (now - data.createdAt > SIGNUP_TOKEN_TTL_MS) {
+      signupStore.delete(email);
+      signupCleaned++;
+    }
+  }
+
+  if (exchangeCleaned > 0 || refreshCleaned > 0 || signupCleaned > 0) {
+    console.log(`[TOKEN_STORE] Cleaned ${exchangeCleaned} exchange codes, ${refreshCleaned} refresh tokens, ${signupCleaned} signup tokens`);
   }
 }
 

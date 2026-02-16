@@ -4,9 +4,10 @@ import { isDbConfigured, withTransaction } from './client';
 
 /** Persona code from Entra Role claim; determines which app_slugs get assigned. */
 const PERSONA_APP_SLUGS: Record<string, string[]> = {
+  P1001: ['A1001','A1002'], // Artist: Mobile
   P1002: ['A1003', 'A1004'], // Manager: Platform & Key
-  P1004: ['A1003', 'A1006', 'A1001'], // Producer: Platform, Aincore, App
   P1003: ['A1003', 'A1005'], // Publicist: Platform & Pulse
+  P1004: ['A1003', 'A1006', 'A1001'], // Producer: Platform, Aincore, App
 };
 
 const DEFAULT_PERSONA = 'P1002';
@@ -30,6 +31,11 @@ export async function syncPersonFromEntra(
   name: string,
   personaCodeFromEntra?: string | null
 ): Promise<{ person_id: string } | null> {
+  const emailTrimmed = typeof email === 'string' ? email.trim() : '';
+  console.log('[DB] syncPersonFromEntra called: entraId=', entraId, 'primary_email(param)=', email === '' ? '(empty string)' : email?.substring(0, 3) + '***', 'length=', email?.length ?? 0, 'display_name=', (name ?? email) === '' ? '(empty)' : '(set)');
+  if (emailTrimmed === '') {
+    console.warn('[DB] syncPersonFromEntra: email is empty; primary_email in DB may be empty or null');
+  }
   if (!isDbConfigured()) {
     console.log('[DB] syncPersonFromEntra skipped: DATABASE_URL not set');
     return null;
@@ -37,17 +43,20 @@ export async function syncPersonFromEntra(
   try {
     return await withTransaction(async (client: PoolClient) => {
       const personUuid = randomUUID().replace(/-/g, ''); // 32-char UUID, no hyphens
+      const primaryEmailInsert = email;
+      const displayNameInsert = name ?? email;
+      console.log('[DB] syncPersonFromEntra INSERT: $3 primary_email=', primaryEmailInsert === '' ? '(empty string)' : primaryEmailInsert.substring(0, 5) + '***', '$4 display_name=', displayNameInsert === '' ? '(empty)' : displayNameInsert.substring(0, 10) + (displayNameInsert.length > 10 ? '...' : ''));
       const insertPersonSql = `
         INSERT INTO subject.person (person_id, entra_id, primary_email, display_name, user_status, created_from_source, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, 'Active', 'platform-singup', now(), now())
+        VALUES ($1, $2, $3, $4, 'Active', 'central-auth', now(), now())
         ON CONFLICT (entra_id) DO NOTHING
         RETURNING person_id
       `;
       const personResult = await client.query(insertPersonSql, [
         personUuid,
         entraId,
-        email,
-        name ?? email,
+        primaryEmailInsert,
+        displayNameInsert,
       ]);
       const insertResult = (personResult.rows ?? []) as { person_id: string }[];
 
@@ -69,7 +78,7 @@ export async function syncPersonFromEntra(
       const assignmentIds = appSlugs.map(() => randomUUID().replace(/-/g, ''));
       const insertPersonaSql = `
         INSERT INTO subject.persona_assignment (assignment_id, person_id, persona_code, app_slug, created_at, created_by)
-        VALUES ${appSlugs.map((_, i) => `($${4 * i + 1}, $${4 * i + 2}, $${4 * i + 3}, $${4 * i + 4}, now(), 'platform-singup')`).join(', ')}
+        VALUES ${appSlugs.map((_, i) => `($${4 * i + 1}, $${4 * i + 2}, $${4 * i + 3}, $${4 * i + 4}, now(), 'central-auth')`).join(', ')}
       `;
       const personaParams = appSlugs.flatMap((slug, i) => [assignmentIds[i], personId, personaCode, slug]);
       try {
