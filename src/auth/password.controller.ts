@@ -254,6 +254,12 @@ export async function passwordToken(req: Request, res: Response): Promise<void> 
       return;
     }
 
+    // Fallback to request body when id_token doesn't include email (common with Entra Native Auth)
+    if ((!userInfo.email || !userInfo.email.trim()) && username && typeof username === 'string' && username.trim().includes('@')) {
+      userInfo = { ...userInfo, email: username.trim() };
+      console.log('[PASSWORD_AUTH] id_token had no email; using request body username as email');
+    }
+
     const idpUser: IdpUserInfo = {
       objectId: userInfo.objectId,
       email: userInfo.email,
