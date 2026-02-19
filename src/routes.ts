@@ -4,7 +4,7 @@ import { callback } from './auth/callback.controller';
 import { logout, simpleLogout } from './auth/logout.controller';
 import { exchangeToken, refreshToken } from './auth/token.controller';
 import { passwordToken } from './auth/password.controller';
-import { signupStart, signupComplete } from './auth/signup.controller';
+import { signupStart, signupComplete, signupVerifyOtp, signupSubmitPassword } from './auth/signup.controller';
 import { getJWKS } from './jwt/jwks.controller';
 import { authRateLimit, apiRateLimit } from './middleware/security.middleware';
 import { verifyToken } from './middleware/auth.middleware';
@@ -20,6 +20,8 @@ router.post('/auth/token/exchange', apiRateLimit, exchangeToken);
 router.post('/auth/token/refresh', apiRateLimit, refreshToken);
 router.post('/auth/token/password', apiRateLimit, passwordToken);
 router.post('/auth/signup/start', apiRateLimit, signupStart);
+router.post('/auth/signup/verify-otp', apiRateLimit, signupVerifyOtp);
+router.post('/auth/signup/submit-password', apiRateLimit, signupSubmitPassword);
 router.post('/auth/signup/complete', apiRateLimit, signupComplete);
 router.get('/.well-known/jwks.json', apiRateLimit, getJWKS);
 

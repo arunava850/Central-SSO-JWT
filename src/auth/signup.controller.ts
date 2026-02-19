@@ -1,7 +1,9 @@
 /**
  * Sign-up flow APIs for Entra External ID Native Authentication.
  * POST /auth/signup/start - Initiate sign-up and send OTP to email
- * POST /auth/signup/complete - Complete sign-up with OTP and password, issue platform JWT
+ * POST /auth/signup/verify-otp - Verify OTP only (step 1 of split flow)
+ * POST /auth/signup/submit-password - Submit password and complete sign-up (step 2 of split flow)
+ * POST /auth/signup/complete - Complete sign-up with OTP and password in one call, issue platform JWT
  */
 
 import { Request, Response } from 'express';
@@ -11,7 +13,7 @@ import { JWTService } from '../jwt/jwt.service';
 import { buildUserClaims } from './claims.helper';
 import { getClaimsByEmail } from '../db/get-claims-by-email';
 import { syncPersonFromEntra } from '../db/sync-person-from-entra';
-import { createRefreshToken, storeSignupContinuationToken, getSignupContinuationToken } from './token.store';
+import { createRefreshToken, storeSignupContinuationToken, getSignupContinuationToken, storePostOtpContinuationToken, getPostOtpContinuationToken } from './token.store';
 import type { IdpUserInfo } from './claims.helper';
 
 const jwtService = new JWTService();
@@ -264,12 +266,367 @@ export async function signupStart(req: Request, res: Response): Promise<void> {
     res.status(200).json({
       message: 'Verification code sent to your email',
       email: redactEmail(emailTrimmed),
+      journey_status: '',
     });
   } catch (error) {
     console.error('[SIGNUP_START] Error:', error instanceof Error ? error.message : error);
     res.status(500).json({
       error: 'server_error',
       error_description: 'Sign-up initiation failed',
+    });
+  }
+}
+
+/**
+ * POST /auth/signup/verify-otp
+ * Verify OTP only. Stores post-OTP continuation token for /auth/signup/submit-password.
+ */
+export async function signupVerifyOtp(req: Request, res: Response): Promise<void> {
+  try {
+    const body = req.body as { email?: string; code?: string };
+    const email = body?.email;
+    const code = body?.code;
+    console.log('[SIGNUP_VERIFY_OTP] API called', { email: email ? redactEmail(email) : undefined, code: code ? '[REDACTED]' : undefined });
+
+    if (!email || typeof email !== 'string' || !email.trim()) {
+      res.status(400).json({ error: 'email is required' });
+      return;
+    }
+    if (!code || typeof code !== 'string' || !code.trim()) {
+      res.status(400).json({ error: 'code is required' });
+      return;
+    }
+
+    const emailTrimmed = email.trim().toLowerCase();
+    const codeTrimmed = code.trim();
+
+    if (!getCiamBaseUrl()) {
+      res.status(503).json({
+        error: 'native_auth_unavailable',
+        error_description: 'Sign-up is not configured for this tenant (ENTRA_TENANT_NAME required)',
+      });
+      return;
+    }
+
+    const continuationToken = getSignupContinuationToken(emailTrimmed);
+    console.log('[SIGNUP_VERIFY_OTP] Continuation token from store:', continuationToken ? '<present>' : 'missing/expired');
+    if (!continuationToken) {
+      res.status(401).json({
+        error: 'expired_token',
+        error_description: 'Verification code expired. Please start sign-up again.',
+      });
+      return;
+    }
+
+    const baseUrl = getCiamBaseUrl()!;
+    const clientId = config.clientId;
+    const continueOobUrl = `${baseUrl}/signup/v1.0/continue`;
+    const continueOobBody: Record<string, string> = {
+      continuation_token: continuationToken,
+      client_id: clientId,
+      grant_type: 'oob',
+      oob: codeTrimmed,
+    };
+    const continueOobRes = await nativeAuthPost(continueOobUrl, continueOobBody, 'signup/continue (oob)');
+    const continueOobData = continueOobRes.data as NativeAuthContinuationResponse;
+
+    // credential_required (400) is expected when password wasn't submitted in /start — Entra still returns continuation_token
+    let newContinuationToken: string | undefined;
+    if (continueOobRes.status === 400 && continueOobData.error === 'credential_required' && continueOobData.continuation_token) {
+      console.log('[SIGNUP_VERIFY_OTP] OTP verified, password required (credential_required response)');
+      newContinuationToken = continueOobData.continuation_token;
+    } else if (continueOobRes.status === 200) {
+      newContinuationToken =
+        continueOobData.continuation_token ?? (continueOobData as { continuation_token_new?: string }).continuation_token_new;
+    } else {
+      console.warn('[SIGNUP_VERIFY_OTP] signup/continue (oob) FAILED', {
+        status: continueOobRes.status,
+        error: continueOobData.error,
+        error_description: continueOobData.error_description,
+        full: continueOobData,
+      });
+      res.status(401).json({
+        error: 'invalid_grant',
+        error_description: 'Invalid verification code',
+      });
+      return;
+    }
+
+    if (!newContinuationToken) {
+      res.status(401).json({
+        error: 'invalid_grant',
+        error_description: 'Invalid verification code',
+      });
+      return;
+    }
+
+    storePostOtpContinuationToken(emailTrimmed, newContinuationToken);
+    console.log('[SIGNUP_VERIFY_OTP] Success: OTP verified, post-OTP token stored');
+
+    res.status(200).json({
+      ok: true,
+      message: 'OTP verified. Proceed to submit password.',
+      journey_status: '',
+    });
+  } catch (error) {
+    console.error('[SIGNUP_VERIFY_OTP] Error:', error instanceof Error ? error.message : error);
+    res.status(500).json({
+      error: 'server_error',
+      error_description: 'OTP verification failed',
+    });
+  }
+}
+
+/**
+ * POST /auth/signup/submit-password
+ * Submit password and complete sign-up. Requires prior OTP verification via /auth/signup/verify-otp.
+ */
+export async function signupSubmitPassword(req: Request, res: Response): Promise<void> {
+  try {
+    const body = req.body as { email?: string; password?: string; displayName?: string; role?: string };
+    const email = body?.email;
+    const password = body?.password;
+    const displayName = body?.displayName;
+    const role = body?.role;
+    console.log('[SIGNUP_SUBMIT_PASSWORD] API called', {
+      email: email ? redactEmail(email) : undefined,
+      displayName: displayName ?? undefined,
+      role: role ?? undefined,
+      password: password ? '[REDACTED]' : undefined,
+    });
+
+    if (!email || typeof email !== 'string' || !email.trim()) {
+      res.status(400).json({ error: 'email is required' });
+      return;
+    }
+    if (!password || typeof password !== 'string') {
+      res.status(400).json({ error: 'password is required' });
+      return;
+    }
+    if (!displayName || typeof displayName !== 'string' || !displayName.trim()) {
+      res.status(400).json({ error: 'displayName is required' });
+      return;
+    }
+    if (!role || typeof role !== 'string' || !role.trim()) {
+      res.status(400).json({ error: 'role is required' });
+      return;
+    }
+
+    const emailTrimmed = email.trim().toLowerCase();
+
+    if (!getCiamBaseUrl()) {
+      res.status(503).json({
+        error: 'native_auth_unavailable',
+        error_description: 'Sign-up is not configured for this tenant (ENTRA_TENANT_NAME required)',
+      });
+      return;
+    }
+
+    let continuationToken = getPostOtpContinuationToken(emailTrimmed);
+    console.log('[SIGNUP_SUBMIT_PASSWORD] Post-OTP continuation token:', continuationToken ? '<present>' : 'missing/expired');
+    if (!continuationToken) {
+      res.status(401).json({
+        error: 'expired_token',
+        error_description: 'OTP verification expired. Please start sign-up again.',
+      });
+      return;
+    }
+
+    const baseUrl = getCiamBaseUrl()!;
+    const clientId = config.clientId;
+    const continueOobUrl = `${baseUrl}/signup/v1.0/continue`;
+
+    // Step 1: signup/v1.0/continue (submit password)
+    const continuePasswordBody: Record<string, string> = {
+      continuation_token: continuationToken,
+      client_id: clientId,
+      grant_type: 'password',
+      password,
+    };
+    const continuePasswordRes = await nativeAuthPost(continueOobUrl, continuePasswordBody, 'signup/continue (password)');
+    const continuePasswordData = continuePasswordRes.data as NativeAuthContinuationResponse;
+
+    if (continuePasswordRes.status === 400 && continuePasswordData.error === 'attributes_required' && continuePasswordData.continuation_token) {
+      console.log('[SIGNUP_SUBMIT_PASSWORD] Password accepted, attributes required (attributes_required response)');
+      continuationToken = continuePasswordData.continuation_token;
+    } else if (continuePasswordRes.status !== 200) {
+      console.warn('[SIGNUP_SUBMIT_PASSWORD] signup/continue (password) FAILED', {
+        status: continuePasswordRes.status,
+        error: continuePasswordData.error,
+        error_description: continuePasswordData.error_description,
+        full: continuePasswordData,
+      });
+      const errorCode = continuePasswordData.error;
+      const suberror = (continuePasswordData as { suberror?: string }).suberror;
+      if (errorCode === 'invalid_grant' && (suberror === 'password_too_weak' || suberror === 'password_too_short')) {
+        res.status(400).json({
+          error: 'invalid_password',
+          error_description: 'Password does not meet requirements',
+        });
+        return;
+      }
+      res.status(401).json({
+        error: 'invalid_grant',
+        error_description: 'Invalid password',
+      });
+      return;
+    } else {
+      continuationToken =
+        continuePasswordData.continuation_token ?? (continuePasswordData as { continuation_token_new?: string }).continuation_token_new ?? continuationToken;
+    }
+
+    if (!continuationToken) {
+      res.status(401).json({
+        error: 'invalid_grant',
+        error_description: 'Invalid password',
+      });
+      return;
+    }
+
+    // Step 2: signup/v1.0/continue (submit mandatory attributes: displayName, Role)
+    const roleAttr = getRoleExtensionAttribute();
+    const attributesPayload = {
+      displayName: displayName!.trim(),
+      [roleAttr]: role!.trim(),
+    };
+    const continueAttributesBody: Record<string, string> = {
+      continuation_token: continuationToken,
+      client_id: clientId,
+      grant_type: 'attributes',
+      attributes: JSON.stringify(attributesPayload),
+    };
+    const continueAttributesRes = await nativeAuthPost(continueOobUrl, continueAttributesBody, 'signup/continue (attributes)');
+    const continueAttributesData = continueAttributesRes.data as NativeAuthContinuationResponse;
+
+    if (continueAttributesRes.status !== 200) {
+      console.warn('[SIGNUP_SUBMIT_PASSWORD] signup/continue (attributes) FAILED', {
+        status: continueAttributesRes.status,
+        error: continueAttributesData.error,
+        error_description: continueAttributesData.error_description,
+        full: continueAttributesData,
+      });
+      res.status(400).json({
+        error: 'invalid_attributes',
+        error_description: continueAttributesData.error_description || 'Invalid or missing required attributes',
+      });
+      return;
+    }
+    continuationToken =
+      continueAttributesData.continuation_token ?? (continueAttributesData as { continuation_token_new?: string }).continuation_token_new ?? continuationToken;
+    if (!continuationToken) {
+      res.status(500).json({
+        error: 'signup_failed',
+        error_description: 'Failed to complete sign-up. Please try again.',
+      });
+      return;
+    }
+
+    // Step 3: oauth2/v2.0/token (get Entra tokens)
+    const tokenUrl = `${baseUrl}/oauth2/v2.0/token`;
+    const tokenBody: Record<string, string> = {
+      continuation_token: continuationToken,
+      client_id: clientId,
+      grant_type: 'continuation_token',
+      scope: 'openid offline_access',
+      username: emailTrimmed,
+    };
+    const tokenRes = await nativeAuthPost(tokenUrl, tokenBody, 'oauth2/token');
+    const tokenData = tokenRes.data as NativeAuthTokenResponse;
+
+    if (tokenRes.status !== 200 || tokenData.error) {
+      console.warn('[SIGNUP_SUBMIT_PASSWORD] token FAILED', {
+        status: tokenRes.status,
+        error: tokenData.error,
+        error_description: tokenData.error_description,
+        full: { ...tokenData, access_token: tokenData.access_token ? '[REDACTED]' : undefined, id_token: tokenData.id_token ? '[REDACTED]' : undefined },
+      });
+      res.status(401).json({
+        error: 'token_failed',
+        error_description: 'Failed to complete sign-up. Please try again.',
+      });
+      return;
+    }
+
+    const idToken = tokenData.id_token;
+    if (!idToken) {
+      console.warn('[SIGNUP_SUBMIT_PASSWORD] No id_token in Entra response');
+      res.status(500).json({
+        error: 'token_failed',
+        error_description: 'Failed to complete sign-up. Please try again.',
+      });
+      return;
+    }
+
+    // Extract user identity from id_token
+    let userInfo: IdpUserInfo;
+    let personaCodeFromEntra = 'P1002';
+    try {
+      const parsed = userFromIdToken(idToken);
+      userInfo = {
+        objectId: parsed.objectId,
+        email: parsed.email,
+        name: parsed.name,
+        roles: parsed.roles,
+        groups: parsed.groups,
+      };
+      personaCodeFromEntra = parsed.personaCodeFromEntra;
+    } catch (decodeErr) {
+      console.warn('[SIGNUP_SUBMIT_PASSWORD] id_token decode failed:', decodeErr instanceof Error ? decodeErr.message : String(decodeErr));
+      res.status(500).json({
+        error: 'token_failed',
+        error_description: 'Failed to complete sign-up. Please try again.',
+      });
+      return;
+    }
+
+    if (!userInfo.email || !userInfo.email.trim()) {
+      userInfo = { ...userInfo, email: emailTrimmed };
+      console.log('[SIGNUP_SUBMIT_PASSWORD] id_token had no email; using request body email');
+    }
+    const nameFromToken = userInfo.name?.trim();
+    if (!nameFromToken || nameFromToken === 'Unknown') {
+      userInfo = { ...userInfo, name: displayName!.trim() };
+      console.log('[SIGNUP_SUBMIT_PASSWORD] id_token had no/unknown name; using request body displayName');
+    }
+
+    const idpUser: IdpUserInfo = {
+      objectId: userInfo.objectId,
+      email: userInfo.email,
+      name: userInfo.name,
+      roles: userInfo.roles,
+      groups: userInfo.groups,
+    };
+
+    const emailForClaims = userInfo.email;
+    let apiClaims: Awaited<ReturnType<typeof getClaimsByEmail>> = null;
+    try {
+      apiClaims = await getClaimsByEmail(emailForClaims);
+      if (!apiClaims) {
+        await syncPersonFromEntra(userInfo.objectId, userInfo.email, userInfo.name, personaCodeFromEntra);
+        apiClaims = await getClaimsByEmail(emailForClaims);
+      }
+    } catch (e) {
+      console.warn('[SIGNUP_SUBMIT_PASSWORD] getClaimsByEmail/sync failed, using defaults:', e instanceof Error ? e.message : e);
+    }
+
+    const jwtPayload = buildUserClaims(idpUser, apiClaims);
+    const accessToken = jwtService.sign(jwtPayload);
+    const expiresInSeconds = config.jwtExpirationMinutes * 60;
+    const refreshToken = createRefreshToken(jwtPayload);
+    console.log('[SIGNUP_SUBMIT_PASSWORD] Success: platform JWT and refresh token issued');
+
+    res.status(200).json({
+      access_token: accessToken,
+      token_type: 'Bearer',
+      expires_in: expiresInSeconds,
+      refresh_token: refreshToken,
+      journey_status: '',
+    });
+  } catch (error) {
+    console.error('[SIGNUP_SUBMIT_PASSWORD] Error:', error instanceof Error ? error.message : error);
+    res.status(500).json({
+      error: 'server_error',
+      error_description: 'Sign-up completion failed',
     });
   }
 }
@@ -582,6 +939,7 @@ export async function signupComplete(req: Request, res: Response): Promise<void>
       token_type: 'Bearer',
       expires_in: expiresInSeconds,
       refresh_token: refreshToken,
+      journey_status: '',
     });
   } catch (error) {
     console.error('[SIGNUP_COMPLETE] Error:', error instanceof Error ? error.message : error);

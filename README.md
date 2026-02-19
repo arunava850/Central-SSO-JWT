@@ -192,6 +192,22 @@ ALLOWED_ORIGINS=https://spoke-app1.com,https://spoke-app2.com
 - `GET /.well-known/jwks.json` - JWKS endpoint for JWT verification
 - `GET /health` - Health check
 
+### Entra Native Auth (CIAM) - Sign-in
+
+- `POST /auth/token/password` - Sign in with username/password. Body: `{ username, password }`. Returns `{ access_token, token_type, expires_in, refresh_token }`.
+
+### Entra Native Auth (CIAM) - Sign-up (split flow)
+
+- `POST /auth/signup/start` - Initiate sign-up, send OTP. Body: `{ email }`. Returns `{ message, email }`.
+- `POST /auth/signup/verify-otp` - Verify OTP only. Body: `{ email, code }`. Returns `{ ok: true, message: "OTP verified. Proceed to submit password." }`.
+- `POST /auth/signup/submit-password` - Submit password and complete sign-up (requires prior OTP verification). Body: `{ email, password, displayName, role }`. Returns `{ access_token, token_type, expires_in, refresh_token }`.
+- `POST /auth/signup/complete` - Complete sign-up in one call (OTP + password + attributes). Body: `{ email, code, password, displayName, role }`. Returns `{ access_token, token_type, expires_in, refresh_token }`.
+
+### Token & Exchange
+
+- `POST /auth/token/exchange` - Exchange one-time `exchange_code` for JWT and refresh token.
+- `POST /auth/token/refresh` - Refresh JWT using refresh token.
+
 ### Protected Endpoints
 
 - `GET /auth/me` - Get current user info (requires Bearer token)
