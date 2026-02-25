@@ -88,7 +88,7 @@ export async function postRegistrationJourney(req: Request, res: Response): Prom
       });
       return;
     }
-    const journeyId = (row as { id?: number; journey_id?: number }).id ?? (row as { journey_id?: number }).journey_id;
+    const journeyId = (row as { journey_id?: number }).journey_id;
     res.status(201).json({
       journey_id: journeyId,
       id: journeyId,
@@ -96,7 +96,7 @@ export async function postRegistrationJourney(req: Request, res: Response): Prom
       current_step_id: row.current_step_id,
       status: row.status,
       metadata: row.metadata,
-      created_at: row.created_at,
+      started_at: row.started_at,
     });
   } catch (error) {
     console.error('[REGISTRATION_JOURNEYS] postRegistrationJourney error:', error instanceof Error ? error.message : error);

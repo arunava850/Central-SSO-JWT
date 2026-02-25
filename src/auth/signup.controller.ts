@@ -14,6 +14,7 @@ import { buildUserClaims } from './claims.helper';
 import { getClaimsByEmail } from '../db/get-claims-by-email';
 import { syncPersonFromEntra } from '../db/sync-person-from-entra';
 import { createRefreshToken, storeSignupContinuationToken, getSignupContinuationToken, storePostOtpContinuationToken, getPostOtpContinuationToken } from './token.store';
+import { getProspectByEmail, createProspect, createRegistrationJourneyByStepId, getLatestRegistrationJourneyByProspectId, getStepNameByStepId } from '../db/prospects';
 import type { IdpUserInfo } from './claims.helper';
 
 const jwtService = new JWTService();
@@ -263,10 +264,60 @@ export async function signupStart(req: Request, res: Response): Promise<void> {
     storeSignupContinuationToken(emailTrimmed, continuationToken);
     console.log('[SIGNUP_START] Success: OTP sent, continuation token stored');
 
+    // Ensure prospect exists and create registration journey entries (step 10 for new prospect, step 20 always)
+    let prospectId: number | null = null;
+    try {
+      let prospect = await getProspectByEmail(emailTrimmed);
+      console.log('[SIGNUP_START] getProspectByEmail result:', prospect ? { prospect_id: prospect.prospect_id ?? prospect.id } : 'null');
+      let isNewProspect = false;
+      if (!prospect) {
+        prospect = await createProspect(emailTrimmed, 'self-serve', 'system', { mode: 'insert' });
+        isNewProspect = !!prospect;
+        console.log('[SIGNUP_START] createProspect (new) result:', prospect ? { prospect_id: prospect.prospect_id ?? prospect.id } : 'null');
+      }
+      prospectId = prospect ? Number(prospect.id ?? prospect.prospect_id) : null;
+      console.log('[SIGNUP_START] prospectId resolved:', prospectId, 'isNewProspect:', isNewProspect);
+      if (prospectId != null && Number.isFinite(prospectId)) {
+        if (isNewProspect) {
+          const journey10 = await createRegistrationJourneyByStepId(prospectId, 10, 'COMPLETED', null);
+          console.log('[SIGNUP_START] createRegistrationJourneyByStepId(prospectId, 10, COMPLETED) returned:', journey10 ? { journey_id: journey10.journey_id } : 'null');
+        }
+        const journey20 = await createRegistrationJourneyByStepId(prospectId, 20, 'COMPLETED', null);
+        console.log('[SIGNUP_START] createRegistrationJourneyByStepId(prospectId, 20, COMPLETED) returned:', journey20 ? { journey_id: journey20.journey_id } : 'null');
+      } else {
+        console.warn('[SIGNUP_START] Prospect/journey skipped: no prospect id (DB may be unconfigured or create failed)');
+      }
+    } catch (err) {
+      console.warn('[SIGNUP_START] Prospect or registration journey creation failed (continuing):', err instanceof Error ? err.message : err);
+    }
+
+    let journey_status = '';
+    try {
+      console.log('[SIGNUP_START] Resolving journey_status for prospectId:', prospectId);
+      if (prospectId != null && Number.isFinite(prospectId)) {
+        const latestJourney = await getLatestRegistrationJourneyByProspectId(prospectId);
+        console.log('[SIGNUP_START] getLatestRegistrationJourneyByProspectId returned:', latestJourney ? { journey_id: latestJourney.journey_id, current_step_id: latestJourney.current_step_id, status: latestJourney.status } : 'null');
+        if (latestJourney) {
+          const stepName = await getStepNameByStepId(latestJourney.current_step_id);
+          console.log('[SIGNUP_START] getStepNameByStepId(current_step_id=', latestJourney.current_step_id, ') returned:', stepName ?? 'null');
+          journey_status = stepName ?? latestJourney.status ?? `STEP_${latestJourney.current_step_id}`;
+        } else {
+          // No journey row yet (e.g. creation failed or no rows) — we just sent OTP
+          journey_status = 'OTP_SENT';
+        }
+      } else {
+        journey_status = 'OTP_SENT';
+      }
+      console.log('[SIGNUP_START] final journey_status:', journey_status);
+    } catch (err) {
+      console.warn('[SIGNUP_START] journey_status lookup failed (continuing):', err instanceof Error ? err.message : err);
+      journey_status = 'OTP_SENT';
+    }
+
     res.status(200).json({
       message: 'Verification code sent to your email',
       email: redactEmail(emailTrimmed),
-      journey_status: '',
+      journey_status,
     });
   } catch (error) {
     console.error('[SIGNUP_START] Error:', error instanceof Error ? error.message : error);
