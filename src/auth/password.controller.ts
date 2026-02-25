@@ -12,6 +12,7 @@ import { JWTService } from '../jwt/jwt.service';
 import { buildUserClaims } from './claims.helper';
 import { getClaimsByEmail } from '../db/get-claims-by-email';
 import { syncPersonFromEntra } from '../db/sync-person-from-entra';
+import { getProspectByEmail, getLatestRegistrationJourneyByProspectId, getStepNameByStepId } from '../db/prospects';
 import { createRefreshToken } from './token.store';
 import type { IdpUserInfo } from './claims.helper';
 
@@ -284,12 +285,31 @@ export async function passwordToken(req: Request, res: Response): Promise<void> 
     const accessToken = jwtService.sign(jwtPayload);
     const expiresInSeconds = config.jwtExpirationMinutes * 60;
     const refreshToken = createRefreshToken(jwtPayload);
+    const refreshExpirySeconds = config.refreshTokenExpirationDays * 24 * 60 * 60;
+    const refresh_expiry_time = refreshExpirySeconds;
+
+    let journey_status = 'SIGNED_IN';
+    try {
+      const prospect = await getProspectByEmail(userInfo.email);
+      const prospectId = prospect ? Number(prospect.id ?? prospect.prospect_id) : null;
+      if (prospectId != null && Number.isFinite(prospectId)) {
+        const latestJourney = await getLatestRegistrationJourneyByProspectId(prospectId);
+        if (latestJourney) {
+          const stepName = await getStepNameByStepId(latestJourney.current_step_id);
+          journey_status = stepName ?? latestJourney.status ?? `STEP_${latestJourney.current_step_id}`;
+        }
+      }
+    } catch (err) {
+      console.warn('[PASSWORD_AUTH] journey_status lookup failed (continuing):', err instanceof Error ? err.message : err);
+    }
 
     res.status(200).json({
       access_token: accessToken,
       token_type: 'Bearer',
       expires_in: expiresInSeconds,
       refresh_token: refreshToken,
+      journey_status,
+      refresh_expiry_time,
     });
   } catch (error) {
     console.error('[PASSWORD_AUTH] Error:', error instanceof Error ? error.message : error);

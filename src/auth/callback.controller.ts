@@ -8,6 +8,7 @@ import { createExchangeCode, createRefreshToken } from './token.store';
 import { buildUserClaims } from './claims.helper';
 import { getClaimsByEmail } from '../db/get-claims-by-email';
 import { syncPersonFromEntra } from '../db/sync-person-from-entra';
+import { getProspectByEmail, createProspect, createRegistrationJourneyByStepId } from '../db/prospects';
 
 const msalService = new MSALService();
 
@@ -157,6 +158,8 @@ export async function callback(req: Request, res: Response): Promise<void> {
       tenantId = config.tenantId;
     }
 
+    const emailTrimmed = (userInfo.email || '').trim().toLowerCase();
+
     // Load claims from DB by email (aud, apps, personId, status); fall back to defaults if DB not configured or no rows
     const idpUser = {
       objectId: userInfo.objectId,
@@ -166,12 +169,14 @@ export async function callback(req: Request, res: Response): Promise<void> {
       groups: userInfo.groups,
     };
     let apiClaims: Awaited<ReturnType<typeof getClaimsByEmail>> = null;
+    let personJustCreated = false;
     try {
       console.log('[CALLBACK] Fetching DB claims for email:', userInfo.email);
       apiClaims = await getClaimsByEmail(userInfo.email);
       if (apiClaims) {
         console.log('[CALLBACK] DB claims loaded for', userInfo.email, '| aud:', apiClaims.aud?.length ?? 0, 'apps, personId:', apiClaims.personId, 'personUuid:', apiClaims.personUuid);
       } else {
+        personJustCreated = true;
         console.log('[CALLBACK] No DB claims (null), syncing person from Entra then re-fetching');
         console.log('[CALLBACK] Passing to syncPersonFromEntra: email=', userInfo.email === '' ? '(empty string)' : userInfo.email.substring(0, 5) + '***', 'name=', userInfo.name ?? '(null)', 'objectId=', userInfo.objectId);
         await syncPersonFromEntra(userInfo.objectId, userInfo.email, userInfo.name, personaCodeFromEntra);
@@ -185,6 +190,28 @@ export async function callback(req: Request, res: Response): Promise<void> {
     } catch (e) {
       console.warn('[CALLBACK] getClaimsByEmail failed, using defaults:', e instanceof Error ? e.message : e);
     }
+
+    if (emailTrimmed) {
+      try {
+        let prospect = await getProspectByEmail(emailTrimmed);
+        if (!prospect) {
+          prospect = await createProspect(emailTrimmed, 'redirect', 'system', { mode: 'insert' });
+        }
+        if (apiClaims) {
+          await createProspect(emailTrimmed, undefined, undefined, { person_uuid: apiClaims.personId, mode: 'update' });
+        }
+        if (personJustCreated && apiClaims && prospect) {
+          const prospectId = Number(prospect.prospect_id ?? prospect.id);
+          if (Number.isFinite(prospectId)) {
+            await createRegistrationJourneyByStepId(prospectId, 50, 'COMPLETED', null);
+            await createRegistrationJourneyByStepId(prospectId, 60, 'COMPLETED', null);
+          }
+        }
+      } catch (e) {
+        console.warn('[CALLBACK] Prospect/registration_journey failed, continuing:', e instanceof Error ? e.message : e);
+      }
+    }
+
     console.log('[CALLBACK] Building user claims and generating JWT...');
     const jwtPayload = buildUserClaims(idpUser, apiClaims);
     console.log('[CALLBACK] Signing JWT with payload sub:', jwtPayload.sub, 'aud:', (jwtPayload as { aud?: string[] }).aud ?? 'config default');

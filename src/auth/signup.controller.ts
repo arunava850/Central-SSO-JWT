@@ -192,9 +192,19 @@ export async function signupStart(req: Request, res: Response): Promise<void> {
         full: startData,
       });
       if (startData.error === 'user_already_exists') {
+        let person_exists = '';
+        try {
+          const claims = await getClaimsByEmail(emailTrimmed);
+          if (claims?.personId) {
+            person_exists = `Person exists as : ${claims.personId}`;
+          }
+        } catch (err) {
+          console.warn('[SIGNUP_START] person_exists check failed (user_already_exists):', err instanceof Error ? err.message : err);
+        }
         res.status(400).json({
           error: 'user_already_exists',
           error_description: 'An account with this email already exists',
+          person_exists,
         });
         return;
       }
@@ -266,10 +276,10 @@ export async function signupStart(req: Request, res: Response): Promise<void> {
 
     // Ensure prospect exists and create registration journey entries (step 10 for new prospect, step 20 always)
     let prospectId: number | null = null;
+    let isNewProspect = false;
     try {
       let prospect = await getProspectByEmail(emailTrimmed);
       console.log('[SIGNUP_START] getProspectByEmail result:', prospect ? { prospect_id: prospect.prospect_id ?? prospect.id } : 'null');
-      let isNewProspect = false;
       if (!prospect) {
         prospect = await createProspect(emailTrimmed, 'self-serve', 'system', { mode: 'insert' });
         isNewProspect = !!prospect;
@@ -314,10 +324,23 @@ export async function signupStart(req: Request, res: Response): Promise<void> {
       journey_status = 'OTP_SENT';
     }
 
+    // Check if person already exists for this email (subject.person by primary_email)
+    let person_exists = '';
+    try {
+      const claims = await getClaimsByEmail(emailTrimmed);
+      if (claims?.personId) {
+        person_exists = `Person exists as : ${claims.personId}`;
+      }
+    } catch (err) {
+      console.warn('[SIGNUP_START] person_exists check failed (continuing):', err instanceof Error ? err.message : err);
+    }
+
     res.status(200).json({
       message: 'Verification code sent to your email',
       email: redactEmail(emailTrimmed),
       journey_status,
+      ...(isNewProspect && prospectId != null && Number.isFinite(prospectId) ? { prospect_id: prospectId } : {}),
+      person_exists,
     });
   } catch (error) {
     console.error('[SIGNUP_START] Error:', error instanceof Error ? error.message : error);
@@ -508,16 +531,17 @@ export async function signupSubmitPassword(req: Request, res: Response): Promise
       res.status(400).json({ error: 'password is required' });
       return;
     }
-    if (!displayName || typeof displayName !== 'string' || !displayName.trim()) {
-      res.status(400).json({ error: 'displayName is required' });
-      return;
-    }
     if (!role || typeof role !== 'string' || !role.trim()) {
       res.status(400).json({ error: 'role is required' });
       return;
     }
 
     const emailTrimmed = email.trim().toLowerCase();
+    // Use displayName if provided; otherwise use the part of the email before @
+    const displayNameToUse =
+      typeof displayName === 'string' && displayName.trim()
+        ? displayName.trim()
+        : (emailTrimmed.includes('@') ? emailTrimmed.split('@')[0] : emailTrimmed) || 'User';
 
     if (!getCiamBaseUrl()) {
       res.status(503).json({
@@ -624,7 +648,7 @@ export async function signupSubmitPassword(req: Request, res: Response): Promise
     // Step 2: signup/v1.0/continue (submit mandatory attributes: displayName, Role)
     const roleAttr = getRoleExtensionAttribute();
     const attributesPayload = {
-      displayName: displayName!.trim(),
+      displayName: displayNameToUse,
       [roleAttr]: role!.trim(),
     };
     const continueAttributesBody: Record<string, string> = {
@@ -723,8 +747,8 @@ export async function signupSubmitPassword(req: Request, res: Response): Promise
     }
     const nameFromToken = userInfo.name?.trim();
     if (!nameFromToken || nameFromToken === 'Unknown') {
-      userInfo = { ...userInfo, name: displayName!.trim() };
-      console.log('[SIGNUP_SUBMIT_PASSWORD] id_token had no/unknown name; using request body displayName');
+      userInfo = { ...userInfo, name: displayNameToUse };
+      console.log('[SIGNUP_SUBMIT_PASSWORD] id_token had no/unknown name; using displayName from request or email');
     }
 
     const idpUser: IdpUserInfo = {
@@ -781,6 +805,7 @@ export async function signupSubmitPassword(req: Request, res: Response): Promise
     const accessToken = jwtService.sign(jwtPayload);
     const expiresInSeconds = config.jwtExpirationMinutes * 60;
     const refreshToken = createRefreshToken(jwtPayload);
+    const refresh_expiry_time = config.refreshTokenExpirationDays * 24 * 60 * 60;
     console.log('[SIGNUP_SUBMIT_PASSWORD] Success: platform JWT and refresh token issued');
 
     let journey_status = 'SIGNUP_COMPLETED';
@@ -804,6 +829,8 @@ export async function signupSubmitPassword(req: Request, res: Response): Promise
       expires_in: expiresInSeconds,
       refresh_token: refreshToken,
       journey_status,
+      person_id: apiClaims.personId,
+      refresh_expiry_time,
     });
   } catch (error) {
     console.error('[SIGNUP_SUBMIT_PASSWORD] Error:', error instanceof Error ? error.message : error);
