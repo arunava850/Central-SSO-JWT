@@ -564,15 +564,31 @@ export async function signupSubmitPassword(req: Request, res: Response): Promise
       const errorCode = continuePasswordData.error;
       const suberror = (continuePasswordData as { suberror?: string }).suberror;
       if (errorCode === 'invalid_grant' && (suberror === 'password_too_weak' || suberror === 'password_too_short')) {
+        try {
+          const prospect = await getProspectByEmail(emailTrimmed);
+          if (prospect) {
+            const prospectId = Number(prospect.prospect_id ?? prospect.id);
+            if (Number.isFinite(prospectId)) await createRegistrationJourneyByStepId(prospectId, 40, 'FAILED', null);
+          }
+        } catch (_) {}
         res.status(400).json({
           error: 'invalid_password',
           error_description: 'Password does not meet requirements',
+          journey_status: 'PASSWORD_VERIFICATION_FAILED',
         });
         return;
       }
+      try {
+        const prospect = await getProspectByEmail(emailTrimmed);
+        if (prospect) {
+          const prospectId = Number(prospect.prospect_id ?? prospect.id);
+          if (Number.isFinite(prospectId)) await createRegistrationJourneyByStepId(prospectId, 40, 'FAILED', null);
+        }
+      } catch (_) {}
       res.status(401).json({
         error: 'invalid_grant',
         error_description: 'Invalid password',
+        journey_status: 'PASSWORD_VERIFICATION_FAILED',
       });
       return;
     } else {
@@ -581,12 +597,29 @@ export async function signupSubmitPassword(req: Request, res: Response): Promise
     }
 
     if (!continuationToken) {
+      try {
+        const prospect = await getProspectByEmail(emailTrimmed);
+        if (prospect) {
+          const prospectId = Number(prospect.prospect_id ?? prospect.id);
+          if (Number.isFinite(prospectId)) await createRegistrationJourneyByStepId(prospectId, 40, 'FAILED', null);
+        }
+      } catch (_) {}
       res.status(401).json({
         error: 'invalid_grant',
         error_description: 'Invalid password',
+        journey_status: 'PASSWORD_VERIFICATION_FAILED',
       });
       return;
     }
+
+    // Password verified: record journey step 40 COMPLETED
+    try {
+      const prospect = await getProspectByEmail(emailTrimmed);
+      if (prospect) {
+        const prospectId = Number(prospect.prospect_id ?? prospect.id);
+        if (Number.isFinite(prospectId)) await createRegistrationJourneyByStepId(prospectId, 40, 'COMPLETED', null);
+      }
+    } catch (_) {}
 
     // Step 2: signup/v1.0/continue (submit mandatory attributes: displayName, Role)
     const roleAttr = getRoleExtensionAttribute();
@@ -704,6 +737,7 @@ export async function signupSubmitPassword(req: Request, res: Response): Promise
 
     const emailForClaims = userInfo.email;
     let apiClaims: Awaited<ReturnType<typeof getClaimsByEmail>> = null;
+    let personCreationFailed = false;
     try {
       apiClaims = await getClaimsByEmail(emailForClaims);
       if (!apiClaims) {
@@ -711,8 +745,37 @@ export async function signupSubmitPassword(req: Request, res: Response): Promise
         apiClaims = await getClaimsByEmail(emailForClaims);
       }
     } catch (e) {
-      console.warn('[SIGNUP_SUBMIT_PASSWORD] getClaimsByEmail/sync failed, using defaults:', e instanceof Error ? e.message : e);
+      console.warn('[SIGNUP_SUBMIT_PASSWORD] getClaimsByEmail/sync failed:', e instanceof Error ? e.message : e);
+      personCreationFailed = true;
     }
+
+    if (personCreationFailed || !apiClaims) {
+      try {
+        const prospect = await getProspectByEmail(emailTrimmed);
+        if (prospect) {
+          const prospectId = Number(prospect.prospect_id ?? prospect.id);
+          if (Number.isFinite(prospectId)) await createRegistrationJourneyByStepId(prospectId, 50, 'FAILED', null);
+        }
+      } catch (_) {}
+      res.status(500).json({
+        error: 'person_creation_failed',
+        error_description: 'Failed to create or load person record.',
+        journey_status: 'PERSON_ID_GENERATION_FAILED',
+      });
+      return;
+    }
+
+    try {
+      await createProspect(emailTrimmed, undefined, undefined, { person_uuid: apiClaims.personId, mode: 'update' });
+      const prospect = await getProspectByEmail(emailTrimmed);
+      if (prospect) {
+        const prospectId = Number(prospect.prospect_id ?? prospect.id);
+        if (Number.isFinite(prospectId)) {
+          await createRegistrationJourneyByStepId(prospectId, 50, 'COMPLETED', null);
+          await createRegistrationJourneyByStepId(prospectId, 60, 'COMPLETED', null);
+        }
+      }
+    } catch (_) {}
 
     const jwtPayload = buildUserClaims(idpUser, apiClaims);
     const accessToken = jwtService.sign(jwtPayload);
@@ -720,12 +783,27 @@ export async function signupSubmitPassword(req: Request, res: Response): Promise
     const refreshToken = createRefreshToken(jwtPayload);
     console.log('[SIGNUP_SUBMIT_PASSWORD] Success: platform JWT and refresh token issued');
 
+    let journey_status = 'SIGNUP_COMPLETED';
+    try {
+      const prospect = await getProspectByEmail(emailTrimmed);
+      if (prospect) {
+        const prospectId = Number(prospect.prospect_id ?? prospect.id);
+        if (Number.isFinite(prospectId)) {
+          const latestJourney = await getLatestRegistrationJourneyByProspectId(prospectId);
+          if (latestJourney) {
+            const stepName = await getStepNameByStepId(60);
+            journey_status = stepName ?? latestJourney.status ?? journey_status;
+          }
+        }
+      }
+    } catch (_) {}
+
     res.status(200).json({
       access_token: accessToken,
       token_type: 'Bearer',
       expires_in: expiresInSeconds,
       refresh_token: refreshToken,
-      journey_status: '',
+      journey_status,
     });
   } catch (error) {
     console.error('[SIGNUP_SUBMIT_PASSWORD] Error:', error instanceof Error ? error.message : error);
