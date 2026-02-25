@@ -362,9 +362,21 @@ export async function signupVerifyOtp(req: Request, res: Response): Promise<void
     const continuationToken = getSignupContinuationToken(emailTrimmed);
     console.log('[SIGNUP_VERIFY_OTP] Continuation token from store:', continuationToken ? '<present>' : 'missing/expired');
     if (!continuationToken) {
+      try {
+        const prospect = await getProspectByEmail(emailTrimmed);
+        if (prospect) {
+          const prospectId = Number(prospect.prospect_id ?? prospect.id);
+          if (Number.isFinite(prospectId)) {
+            await createRegistrationJourneyByStepId(prospectId, 30, 'FAILED', null);
+          }
+        }
+      } catch (_) {
+        // ignore DB errors; don't change response
+      }
       res.status(401).json({
         error: 'expired_token',
         error_description: 'Verification code expired. Please start sign-up again.',
+        journey_status: 'OTP_VERIFICATION_FAILED',
       });
       return;
     }
@@ -396,17 +408,41 @@ export async function signupVerifyOtp(req: Request, res: Response): Promise<void
         error_description: continueOobData.error_description,
         full: continueOobData,
       });
+      try {
+        const prospect = await getProspectByEmail(emailTrimmed);
+        if (prospect) {
+          const prospectId = Number(prospect.prospect_id ?? prospect.id);
+          if (Number.isFinite(prospectId)) {
+            await createRegistrationJourneyByStepId(prospectId, 30, 'FAILED', null);
+          }
+        }
+      } catch (_) {
+        // ignore DB errors
+      }
       res.status(401).json({
         error: 'invalid_grant',
         error_description: 'Invalid verification code',
+        journey_status: 'OTP_VERIFICATION_FAILED',
       });
       return;
     }
 
     if (!newContinuationToken) {
+      try {
+        const prospect = await getProspectByEmail(emailTrimmed);
+        if (prospect) {
+          const prospectId = Number(prospect.prospect_id ?? prospect.id);
+          if (Number.isFinite(prospectId)) {
+            await createRegistrationJourneyByStepId(prospectId, 30, 'FAILED', null);
+          }
+        }
+      } catch (_) {
+        // ignore DB errors
+      }
       res.status(401).json({
         error: 'invalid_grant',
         error_description: 'Invalid verification code',
+        journey_status: 'OTP_VERIFICATION_FAILED',
       });
       return;
     }
@@ -414,10 +450,28 @@ export async function signupVerifyOtp(req: Request, res: Response): Promise<void
     storePostOtpContinuationToken(emailTrimmed, newContinuationToken);
     console.log('[SIGNUP_VERIFY_OTP] Success: OTP verified, post-OTP token stored');
 
+    let journey_status = 'OTP_VERIFIED';
+    try {
+      const prospect = await getProspectByEmail(emailTrimmed);
+      if (prospect) {
+        const prospectId = Number(prospect.prospect_id ?? prospect.id);
+        if (Number.isFinite(prospectId)) {
+          await createRegistrationJourneyByStepId(prospectId, 30, 'COMPLETED', null);
+          const latestJourney = await getLatestRegistrationJourneyByProspectId(prospectId);
+          if (latestJourney) {
+            const stepName = await getStepNameByStepId(30);
+            journey_status = stepName ?? latestJourney.status ?? journey_status;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[SIGNUP_VERIFY_OTP] Prospect/journey_status failed (continuing):', err instanceof Error ? err.message : err);
+    }
+
     res.status(200).json({
       ok: true,
       message: 'OTP verified. Proceed to submit password.',
-      journey_status: '',
+      journey_status,
     });
   } catch (error) {
     console.error('[SIGNUP_VERIFY_OTP] Error:', error instanceof Error ? error.message : error);

@@ -185,6 +185,11 @@ SELECT step_name FROM subject.workflow_steps
 WHERE sequence_order = $1
 `;
 
+const SELECT_STEP_ID_BY_SEQUENCE_ORDER = `
+SELECT step_id FROM subject.workflow_steps
+WHERE sequence_order = $1
+`;
+
 /**
  * Insert a registration journey for a prospect. step_name defaults to 'OTP_VERIFICATION'.
  * Returns the created row or null if DB not configured or on error.
@@ -316,6 +321,51 @@ export async function getStepNameByStepId(stepId: number): Promise<string | null
     console.error('[DB] getStepNameByStepId failed:', err);
     return null;
   }
+}
+
+/** Row shape for step_id query */
+interface WorkflowStepIdRow {
+  step_id?: number;
+}
+
+/**
+ * Returns the step_id for a given sequence_order from subject.workflow_steps.
+ * Returns null if DB not configured, no row found, or on error.
+ */
+export async function getStepIdBySequenceOrder(sequenceOrder: number): Promise<number | null> {
+  if (!isDbConfigured()) {
+    console.log('[DB] getStepIdBySequenceOrder skipped: DATABASE_URL not set');
+    return null;
+  }
+  try {
+    console.log('[DB] getStepIdBySequenceOrder params:', { sequenceOrder });
+    const rows = await query<WorkflowStepIdRow>(SELECT_STEP_ID_BY_SEQUENCE_ORDER, [sequenceOrder]);
+    const stepId = rows?.[0]?.step_id;
+    const result = stepId != null && Number.isFinite(Number(stepId)) ? Number(stepId) : null;
+    console.log('[DB] getStepIdBySequenceOrder returned:', result);
+    return result;
+  } catch (err) {
+    console.error('[DB] getStepIdBySequenceOrder failed:', err);
+    return null;
+  }
+}
+
+/**
+ * Insert a registration journey for a prospect by sequence_order (resolves step_id from workflow_steps).
+ * Returns the created row or null if DB not configured, sequence_order not found, or on error.
+ */
+export async function createRegistrationJourneyBySequenceOrder(
+  prospectId: number,
+  sequenceOrder: number,
+  status: string = 'IN_PROGRESS',
+  metadata: unknown = null
+): Promise<RegistrationJourneyRow | null> {
+  const stepId = await getStepIdBySequenceOrder(sequenceOrder);
+  if (stepId == null) {
+    console.warn('[DB] createRegistrationJourneyBySequenceOrder: no step_id for sequence_order', sequenceOrder);
+    return null;
+  }
+  return createRegistrationJourneyByStepId(prospectId, stepId, status, metadata);
 }
 
 const DELETE_REGISTRATION_JOURNEY_BY_ID = `
