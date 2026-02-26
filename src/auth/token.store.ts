@@ -29,11 +29,15 @@ const exchangeStore = new Map<string, ExchangeCodeData>();
 const refreshStore = new Map<string, RefreshTokenData>();
 const signupStore = new Map<string, { continuationToken: string; createdAt: number }>();
 const postOtpStore = new Map<string, { continuationToken: string; createdAt: number }>();
+const resetPasswordStartStore = new Map<string, { continuationToken: string; createdAt: number }>();
+const resetPasswordPostOtpStore = new Map<string, { continuationToken: string; createdAt: number }>();
 
 // Exchange code: short-lived, one-time use (5 minutes)
 const EXCHANGE_CODE_TTL_MS = 5 * 60 * 1000;
 // Signup continuation token: 10 minutes TTL
 const SIGNUP_TOKEN_TTL_MS = 10 * 60 * 1000;
+// Password reset: 10 minutes for start token, 10 minutes for post-OTP token (Entra submit)
+const RESET_PASSWORD_TOKEN_TTL_MS = 10 * 60 * 1000;
 function getRefreshTokenTTL(): number {
   return config.refreshTokenExpirationDays * 24 * 60 * 60 * 1000;
 }
@@ -166,7 +170,55 @@ export function getPostOtpContinuationToken(email: string): string | null {
 }
 
 /**
- * Clean up expired exchange codes, refresh tokens, signup tokens, and post-OTP tokens.
+ * Store continuation token for password-reset/start (after challenge). Keyed by email. TTL: 10 minutes.
+ */
+export function storeResetPasswordStartToken(email: string, continuationToken: string): void {
+  resetPasswordStartStore.set(email.toLowerCase().trim(), {
+    continuationToken,
+    createdAt: Date.now(),
+  });
+}
+
+/**
+ * Get and consume password-reset start continuation token (one-time use). Returns null if not found or expired.
+ */
+export function getResetPasswordStartToken(email: string): string | null {
+  const key = email.toLowerCase().trim();
+  const data = resetPasswordStartStore.get(key);
+  resetPasswordStartStore.delete(key);
+
+  if (!data) return null;
+  if (Date.now() - data.createdAt > RESET_PASSWORD_TOKEN_TTL_MS) return null;
+
+  return data.continuationToken;
+}
+
+/**
+ * Store continuation token for password-reset/submit-password (after verify-otp /continue). Keyed by email. TTL: 10 minutes.
+ */
+export function storeResetPasswordPostOtpToken(email: string, continuationToken: string): void {
+  resetPasswordPostOtpStore.set(email.toLowerCase().trim(), {
+    continuationToken,
+    createdAt: Date.now(),
+  });
+}
+
+/**
+ * Get and consume password-reset post-OTP continuation token (one-time use). Returns null if not found or expired.
+ */
+export function getResetPasswordPostOtpToken(email: string): string | null {
+  const key = email.toLowerCase().trim();
+  const data = resetPasswordPostOtpStore.get(key);
+  resetPasswordPostOtpStore.delete(key);
+
+  if (!data) return null;
+  if (Date.now() - data.createdAt > RESET_PASSWORD_TOKEN_TTL_MS) return null;
+
+  return data.continuationToken;
+}
+
+/**
+ * Clean up expired exchange codes, refresh tokens, signup tokens, post-OTP tokens, and password-reset tokens.
  */
 export function cleanupExpiredTokens(): void {
   const now = Date.now();
@@ -174,6 +226,8 @@ export function cleanupExpiredTokens(): void {
   let refreshCleaned = 0;
   let signupCleaned = 0;
   let postOtpCleaned = 0;
+  let resetStartCleaned = 0;
+  let resetPostOtpCleaned = 0;
 
   for (const [code, data] of exchangeStore.entries()) {
     if (now - data.createdAt > EXCHANGE_CODE_TTL_MS) {
@@ -204,8 +258,22 @@ export function cleanupExpiredTokens(): void {
     }
   }
 
-  if (exchangeCleaned > 0 || refreshCleaned > 0 || signupCleaned > 0 || postOtpCleaned > 0) {
-    console.log(`[TOKEN_STORE] Cleaned ${exchangeCleaned} exchange codes, ${refreshCleaned} refresh tokens, ${signupCleaned} signup tokens, ${postOtpCleaned} post-OTP tokens`);
+  for (const [email, data] of resetPasswordStartStore.entries()) {
+    if (now - data.createdAt > RESET_PASSWORD_TOKEN_TTL_MS) {
+      resetPasswordStartStore.delete(email);
+      resetStartCleaned++;
+    }
+  }
+
+  for (const [email, data] of resetPasswordPostOtpStore.entries()) {
+    if (now - data.createdAt > RESET_PASSWORD_TOKEN_TTL_MS) {
+      resetPasswordPostOtpStore.delete(email);
+      resetPostOtpCleaned++;
+    }
+  }
+
+  if (exchangeCleaned > 0 || refreshCleaned > 0 || signupCleaned > 0 || postOtpCleaned > 0 || resetStartCleaned > 0 || resetPostOtpCleaned > 0) {
+    console.log(`[TOKEN_STORE] Cleaned ${exchangeCleaned} exchange, ${refreshCleaned} refresh, ${signupCleaned} signup, ${postOtpCleaned} post-OTP, ${resetStartCleaned} reset-start, ${resetPostOtpCleaned} reset-post-OTP`);
   }
 }
 

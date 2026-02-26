@@ -85,8 +85,9 @@ async function nativeAuthPost(
 /**
  * Run Entra External ID Native Authentication sign-in (oauth2/v2.0: initiate → challenge → token).
  * Returns id_token and access_token on success; throws or returns error shape on failure.
+ * Exported for use by password-reset flow (sign in after reset).
  */
-async function nativeAuthSignIn(
+export async function nativeAuthSignIn(
   username: string,
   password: string
 ): Promise<{ id_token?: string; access_token?: string; expires_in?: number }> {
@@ -176,7 +177,7 @@ async function nativeAuthSignIn(
   };
 }
 
-function userFromIdToken(idToken: string): IdpUserInfo & { personaCodeFromEntra: string } {
+export function userFromIdToken(idToken: string): IdpUserInfo & { personaCodeFromEntra: string } {
   const decoded = jwt.decode(idToken) as EntraIdTokenPayload | null;
   if (!decoded || typeof decoded !== 'object') {
     throw new Error('Invalid id_token');

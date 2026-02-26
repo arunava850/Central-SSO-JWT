@@ -79,6 +79,16 @@ jwt.verify(token, getKey, {
 
 Your app is now integrated with Central Auth.
 
+## Password reset (Entra native)
+
+For apps using Entra External ID native auth (email/password), password reset is a 3-step flow:
+
+1. **POST /auth/password-reset/start** – body `{ "email": "user@example.com" }` → sends OTP to email.
+2. **POST /auth/password-reset/verify-otp** – body `{ "email", "code" }` → verifies OTP.
+3. **POST /auth/password-reset/submit-password** – body `{ "email", "new_password" }` → updates password and returns the same token response as sign-in (`access_token`, `refresh_token`, `journey_status`, `person_id`, `refresh_expiry_time`) so the user stays logged in.
+
+See `docs/AUTHENTICATION-FLOWS.md` § 2.3 for details.
+
 ## Next Steps
 
 - See [Complete Integration Guide](./docs/INTEGRATION-GUIDE.md) for detailed examples

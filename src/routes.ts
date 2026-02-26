@@ -5,6 +5,7 @@ import { logout, simpleLogout } from './auth/logout.controller';
 import { exchangeToken, refreshToken } from './auth/token.controller';
 import { passwordToken } from './auth/password.controller';
 import { signupStart, signupComplete, signupVerifyOtp, signupSubmitPassword } from './auth/signup.controller';
+import { passwordResetStart, passwordResetVerifyOtp, passwordResetSubmitPassword } from './auth/password-reset.controller';
 import { getJWKS } from './jwt/jwks.controller';
 import { authRateLimit, apiRateLimit } from './middleware/security.middleware';
 import { verifyToken } from './middleware/auth.middleware';
@@ -23,6 +24,9 @@ router.post('/auth/signup/start', apiRateLimit, signupStart);
 router.post('/auth/signup/verify-otp', apiRateLimit, signupVerifyOtp);
 router.post('/auth/signup/submit-password', apiRateLimit, signupSubmitPassword);
 router.post('/auth/signup/complete', apiRateLimit, signupComplete);
+router.post('/auth/password-reset/start', apiRateLimit, passwordResetStart);
+router.post('/auth/password-reset/verify-otp', apiRateLimit, passwordResetVerifyOtp);
+router.post('/auth/password-reset/submit-password', apiRateLimit, passwordResetSubmitPassword);
 router.get('/.well-known/jwks.json', apiRateLimit, getJWKS);
 
 // Protected routes (example)

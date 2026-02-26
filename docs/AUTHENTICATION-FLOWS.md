@@ -160,6 +160,56 @@ Two ways: **one-shot** (`/auth/signup/complete`) or **split** (`/auth/signup/ver
 
 ---
 
+### 2.3 Password Reset (SSPR)
+
+Self-service password reset using Entra External ID native SSPR API. Flow is split into three endpoints (same pattern as sign-up). **SSPR must be enabled** for customer users in the Entra External ID tenant.
+
+#### 2.3.1 Start Password Reset
+
+- **Route:** `POST /auth/password-reset/start`
+- **Body:** `email`
+- **Handler:** `src/auth/password-reset.controller.ts` → `passwordResetStart()`
+
+**Flow:**
+
+1. Validate email; get CIAM base URL.
+2. **Entra:** `POST {ciam}/resetpassword/v1.0/start` with `challenge_type: 'oob redirect'`, `username: email` → `continuation_token`.
+3. **Entra:** `POST {ciam}/resetpassword/v1.0/challenge` with that token → sends OTP to email; get new `continuation_token`.
+4. `storeResetPasswordStartToken(email, continuationToken)` (10 min TTL).
+5. Respond with `message`, `email` (redacted). On `user_not_found` or `challenge_type: 'redirect'` return 400.
+
+#### 2.3.2 Verify OTP
+
+- **Route:** `POST /auth/password-reset/verify-otp`
+- **Body:** `email`, `code`
+- **Handler:** `passwordResetVerifyOtp()`
+
+**Flow:**
+
+1. `getResetPasswordStartToken(email)` (consumed). If missing/expired → 401.
+2. **Entra:** `POST {ciam}/resetpassword/v1.0/continue` with `grant_type: 'oob'`, `oob: code`.
+3. On success: `storeResetPasswordPostOtpToken(email, newContinuationToken)` (10 min TTL).
+4. Respond with `message: 'Code verified. Proceed to set new password.'`.
+
+#### 2.3.3 Submit New Password
+
+- **Route:** `POST /auth/password-reset/submit-password`
+- **Body:** `email`, `new_password`
+- **Handler:** `passwordResetSubmitPassword()`
+
+**Flow:**
+
+1. `getResetPasswordPostOtpToken(email)` (consumed). If missing/expired → 401.
+2. **Entra:** `POST {ciam}/resetpassword/v1.0/submit` with `continuation_token`, `client_id`, `new_password` → password updated in Entra.
+3. Sign user in with new password: same as `POST /auth/token/password` (initiate → challenge → token), then `getClaimsByEmail` / `syncPersonFromEntra`, `buildUserClaims`, `jwtService.sign`, `createRefreshToken`.
+4. Respond with **the same structure as sign-up submit-password and sign-in:** `access_token`, `token_type`, `expires_in`, `refresh_token`, `journey_status`, `person_id`, `refresh_expiry_time`. The client can stay logged in after reset.
+
+On Entra password policy errors (e.g. `password_too_weak`), return 400 with `error` / `suberror` / `error_description`.
+
+**Relevant:** `src/auth/password-reset.controller.ts`, `src/auth/token.store.ts` (reset start and post-OTP tokens), `src/auth/password.controller.ts` (exports `nativeAuthSignIn`, `userFromIdToken` for sign-in after reset).
+
+---
+
 ## 3. Shared Pieces (Both Options)
 
 - **JWT:** `src/jwt/jwt.service.ts` – RS256, `config.jwtPrivateKey`, `config.jwtExpirationMinutes`, issuer/audience from config.
