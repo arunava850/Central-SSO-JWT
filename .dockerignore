@@ -1,0 +1,46 @@
+# Dependencies
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build output (rebuilt in container)
+dist
+.next
+out
+build
+
+# Env and secrets — provide at runtime
+.env
+.env.*
+!.env.example
+
+# Keys and certs — mount or use env (e.g. JWT_PRIVATE_KEY) at runtime
+keys
+certs
+
+# IDE and tools
+.cursor
+.idea
+.vscode
+*.log
+
+# Git
+.git
+.gitignore
+.dockerignore
+Dockerfile
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docs and misc
+README.md
+*.md
+docs
+examples
+deploy
+scripts
+Central SSO Client
+*.code-workspace
