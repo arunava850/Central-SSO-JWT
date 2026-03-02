@@ -77,12 +77,14 @@ export async function refreshToken(req: Request, res: Response): Promise<void> {
     const accessToken = jwtService.sign(payload);
     const expiresInSeconds = config.jwtExpirationMinutes * 60;
     const newRefreshToken = createRefreshToken(payload);
+    const refreshExpiresInSeconds = config.refreshTokenExpirationDays * 24 * 60 * 60;
 
     res.status(200).json({
       access_token: accessToken,
       token_type: 'Bearer',
       expires_in: expiresInSeconds,
       refresh_token: newRefreshToken,
+      refresh_expires_in: refreshExpiresInSeconds,
     });
   } catch (error) {
     console.error('[TOKEN_REFRESH] Error:', error);
